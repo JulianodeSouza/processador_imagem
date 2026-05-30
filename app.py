@@ -1,5 +1,6 @@
 import streamlit as st
-import anthropic
+from google import genai
+from google.genai import types
 import mediapipe as mp
 import cv2
 import numpy as np
@@ -595,3 +596,4 @@ st.markdown("""
     VISAIA · POWERED BY CLAUDE AI + MEDIAPIPE · ANÁLISE FACIAL & VISAGISMO
 </div>
 """, unsafe_allow_html=True)
+
