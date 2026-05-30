@@ -21,7 +21,7 @@ Para rodar este projeto em sua própria máquina, siga os passos detalhados abai
 
 ### ⚙️ Pré-requisitos
 - Ter o [Python](https://www.python.org/downloads/) (versão 3.8 ou superior) instalado.
-- Ter uma conta na [Anthropic](https://console.anthropic.com/) para gerar uma chave de API (necessária para a análise do Claude Vision).
+- Ter uma chave de API do Gemini, gerada gratuitamente no Google AI Studio.
 
 ### 🛠️ Passo a Passo
 
@@ -48,18 +48,19 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**4. Configure a chave da API do Claude (Anthropic)**
-Obtenha sua chave de API criando uma conta no [Console da Anthropic](https://console.anthropic.com/). Após gerar a chave (`sk-ant-api03...`), defina-a como variável de ambiente:
+**4. Configure a chave da API do Google Gemini **
+Obtenha sua chave de API abrindo o site  [Google AI Studio](https://aistudio.google.com). Após gerar a chave, defina-a como variável de ambiente:
 
 ```bash
+
 # Windows (PowerShell):
-$env:ANTHROPIC_API_KEY = "sua-chave-aqui"
+$env:GEMINI_API_KEY = "sua-chave-aqui"
 
 # Windows (Prompt de Comando - CMD):
-set ANTHROPIC_API_KEY=sua-chave-aqui
+set GEMINI_API_KEY=sua-chave-aqui
 
 # Linux / macOS:
-export ANTHROPIC_API_KEY="sua-chave-aqui"
+export GEMINI_API_KEY="sua-chave-aqui"
 ```
 
 **5. Execute a aplicação**
