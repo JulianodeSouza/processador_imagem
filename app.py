@@ -4,11 +4,12 @@ from google.genai import types
 import mediapipe as mp
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 import base64
 import io
 import json
-import math
+import os
+import urllib.request
 
 # ─── Page Config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -202,25 +203,29 @@ h1, h2, h3 {
 """, unsafe_allow_html=True)
 
 
-# ─── MediaPipe Setup ───────────────────────────────────────────────────────────
-mp_face_mesh = mp.solutions.face_mesh
-mp_drawing = mp.solutions.drawing_utils
-mp_drawing_styles = mp.solutions.drawing_styles
+# ─── Download automático do modelo do MediaPipe ────────────────────────────────
+MODEL_PATH = "face_landmarker.task"
+if not os.path.exists(MODEL_PATH):
+    with st.spinner("Baixando modelo do MediaPipe pela primeira vez (~30MB)..."):
+        urllib.request.urlretrieve(
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            MODEL_PATH
+        )
 
-# Key landmark indices for face shape analysis
+# ─── Índices dos landmarks faciais ────────────────────────────────────────────
 LANDMARKS = {
-    "top":          10,   # Forehead top
-    "bottom":       152,  # Chin
-    "left":         234,  # Left cheek
-    "right":        454,  # Right cheek
-    "jaw_left":     172,  # Left jaw
-    "jaw_right":    397,  # Right jaw
-    "cheek_left":   116,  # Left cheekbone
-    "cheek_right":  345,  # Right cheekbone
-    "temple_left":  70,   # Left temple
-    "temple_right": 300,  # Right temple
-    "forehead_l":   63,   # Forehead left
-    "forehead_r":   293,  # Forehead right
+    "top":          10,
+    "bottom":       152,
+    "left":         234,
+    "right":        454,
+    "jaw_left":     172,
+    "jaw_right":    397,
+    "cheek_left":   116,
+    "cheek_right":  345,
+    "temple_left":  70,
+    "temple_right": 300,
+    "forehead_l":   63,
+    "forehead_r":   293,
 }
 
 HAIRCUT_IMAGES = {
@@ -265,27 +270,22 @@ HAIRCUT_IMAGES = {
 
 # ─── Helper Functions ──────────────────────────────────────────────────────────
 
-def pil_to_cv2(pil_img: Image.Image) -> np.ndarray:
-    return cv2.cvtColor(np.array(pil_img.convert("RGB")), cv2.COLOR_RGB2BGR)
-
-
 def image_to_b64(pil_img: Image.Image) -> str:
     buf = io.BytesIO()
     pil_img.save(buf, format="JPEG", quality=90)
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def draw_face_mesh(img_bgr: np.ndarray, results) -> np.ndarray:
-    annotated = img_bgr.copy()
-    for face_landmarks in results.multi_face_landmarks:
-        mp_drawing.draw_landmarks(
-            image=annotated,
-            landmark_list=face_landmarks,
-            connections=mp_face_mesh.FACEMESH_CONTOURS,
-            landmark_drawing_spec=None,
-            connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style(),
-        )
-    return annotated
+def draw_face_landmarks(pil_img: Image.Image, landmarks) -> Image.Image:
+    """Desenha os pontos faciais na imagem usando PIL."""
+    img = pil_img.copy()
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    for lm in landmarks:
+        x = int(lm.x * w)
+        y = int(lm.y * h)
+        draw.ellipse([x - 1, y - 1, x + 1, y + 1], fill=(201, 168, 76, 200))
+    return img
 
 
 def compute_face_ratios(landmarks, w: int, h: int) -> dict:
@@ -293,16 +293,16 @@ def compute_face_ratios(landmarks, w: int, h: int) -> dict:
         lm = landmarks[idx]
         return np.array([lm.x * w, lm.y * h])
 
-    top        = pt(LANDMARKS["top"])
-    bottom     = pt(LANDMARKS["bottom"])
-    left_c     = pt(LANDMARKS["left"])
-    right_c    = pt(LANDMARKS["right"])
-    jaw_l      = pt(LANDMARKS["jaw_left"])
-    jaw_r      = pt(LANDMARKS["jaw_right"])
-    cheek_l    = pt(LANDMARKS["cheek_left"])
-    cheek_r    = pt(LANDMARKS["cheek_right"])
-    fore_l     = pt(LANDMARKS["forehead_l"])
-    fore_r     = pt(LANDMARKS["forehead_r"])
+    top     = pt(LANDMARKS["top"])
+    bottom  = pt(LANDMARKS["bottom"])
+    left_c  = pt(LANDMARKS["left"])
+    right_c = pt(LANDMARKS["right"])
+    jaw_l   = pt(LANDMARKS["jaw_left"])
+    jaw_r   = pt(LANDMARKS["jaw_right"])
+    cheek_l = pt(LANDMARKS["cheek_left"])
+    cheek_r = pt(LANDMARKS["cheek_right"])
+    fore_l  = pt(LANDMARKS["forehead_l"])
+    fore_r  = pt(LANDMARKS["forehead_r"])
 
     face_height     = np.linalg.norm(bottom - top)
     face_width      = np.linalg.norm(right_c - left_c)
@@ -323,31 +323,33 @@ def compute_face_ratios(landmarks, w: int, h: int) -> dict:
 
 
 def detect_face(pil_img: Image.Image):
-    img_bgr = pil_to_cv2(pil_img)
-    h, w = img_bgr.shape[:2]
+    img_rgb = np.array(pil_img.convert("RGB"))
+    h, w = img_rgb.shape[:2]
 
-    with mp_face_mesh.FaceMesh(
-        static_image_mode=True,
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
-    ) as face_mesh:
-        results = face_mesh.process(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB))
+    base_options = mp.tasks.BaseOptions(model_asset_path=MODEL_PATH)
+    options = mp.tasks.vision.FaceLandmarkerOptions(
+        base_options=base_options,
+        num_faces=1,
+        min_face_detection_confidence=0.5
+    )
 
-    if not results.multi_face_landmarks:
+    with mp.tasks.vision.FaceLandmarker.create_from_options(options) as detector:
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
+        results = detector.detect(mp_image)
+
+    if not results.face_landmarks:
         return None, None, None
 
-    landmarks = results.multi_face_landmarks[0].landmark
-    ratios    = compute_face_ratios(landmarks, w, h)
-    annotated = draw_face_mesh(img_bgr, results)
-    annotated_pil = Image.fromarray(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB))
+    landmarks = results.face_landmarks[0]
+    ratios = compute_face_ratios(landmarks, w, h)
+    annotated_pil = draw_face_landmarks(pil_img, landmarks)
 
     return annotated_pil, ratios, landmarks
 
 
-def analyze_with_claude(pil_img: Image.Image, ratios: dict) -> dict:
-    client = anthropic.Anthropic()
-    b64    = image_to_b64(pil_img)
+def analyze_with_gemini(pil_img: Image.Image, ratios: dict) -> dict:
+    # Inicializa o cliente oficial do SDK google-genai
+    client = genai.Client()
 
     system_prompt = """Você é um especialista em visagismo e análise facial.
 Analise a imagem e os dados de proporções faciais fornecidos.
@@ -355,7 +357,7 @@ Retorne APENAS um JSON válido (sem markdown, sem texto extra) com esta estrutur
 {
   "formato_rosto": "Oval|Redondo|Quadrado|Coração|Oblongo|Diamante",
   "confianca": 0.0-1.0,
-  "descricao_formato": "Descrição curta do formato (1-2 frases)",
+  "descricao_formato": "Descrição corta do formato (1-2 frases)",
   "caracteristicas_detectadas": ["característica 1", "característica 2", "característica 3"],
   "dica_principal": "Dica principal de visagismo (2-3 frases)",
   "estilos_recomendados": [
@@ -367,14 +369,7 @@ Retorne APENAS um JSON válido (sem markdown, sem texto extra) com esta estrutur
   "evitar": ["Estilo que deve evitar 1", "Estilo que deve evitar 2"]
 }"""
 
-    user_content = [
-        {
-            "type": "image",
-            "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
-        },
-        {
-            "type": "text",
-            "text": f"""Analise este rosto com base na imagem e nas proporções medidas pelo MediaPipe:
+    user_text = f"""Analise este rosto com base na imagem e nas proporções medidas pelo MediaPipe:
 
 Proporções calculadas:
 - Altura do rosto: {ratios['face_height']:.0f}px
@@ -386,19 +381,20 @@ Proporções calculadas:
 - Proporção mandíbula/maçãs: {ratios['ratio_jaw_cheek']:.2f}
 - Proporção testa/mandíbula: {ratios['ratio_fore_jaw']:.2f}
 
-Com base na imagem e nessas métricas, forneça a análise de visagismo completa.""",
-        },
-    ]
+Com base na imagem e nessas métricas, forneça a análise de visagismo completa."""
 
-    response = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=1200,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_content}],
+    # No SDK novo do Gemini, passamos o objeto PIL Image direto na lista contents
+    response = client.models.generate_content(
+        model='gemini-3.5-flash',
+        contents=[pil_img, user_text],
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json",
+            temperature=0.2
+        )
     )
 
-    raw = response.content[0].text.strip()
-    # Strip markdown fences if present
+    raw = response.text.strip()
     raw = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(raw)
 
@@ -425,10 +421,8 @@ with col_upload:
 
     if uploaded_file:
         pil_img = Image.open(uploaded_file).convert("RGB")
-        # Resize for performance
-        max_dim = 800
-        if max(pil_img.size) > max_dim:
-            pil_img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+        if max(pil_img.size) > 800:
+            pil_img.thumbnail((800, 800), Image.LANCZOS)
 
         st.image(pil_img, caption="Foto enviada", use_container_width=True)
 
@@ -469,13 +463,12 @@ with col_result:
         else:
             with st.spinner("🤖 Analisando com IA · Visagismo..."):
                 try:
-                    analysis = analyze_with_claude(pil_img, ratios)
+                    analysis = analyze_with_gemini(pil_img, ratios)
                 except Exception as e:
                     st.error(f"Erro na análise IA: {e}")
                     st.stop()
 
-            # ── Face Shape Badge ──
-            fmt = analysis.get("formato_rosto", "Oval")
+            fmt  = analysis.get("formato_rosto", "Oval")
             conf = int(analysis.get("confianca", 0.85) * 100)
 
             st.markdown(f'<div class="face-shape-badge">Formato {fmt}</div>', unsafe_allow_html=True)
@@ -485,14 +478,12 @@ with col_result:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # ── Two-column layout: annotated image + analysis cards ──
             img_col, info_col = st.columns([1, 1], gap="medium")
 
             with img_col:
                 st.markdown('<div class="step-label">Mapeamento Facial</div>', unsafe_allow_html=True)
                 st.image(annotated_img, use_container_width=True)
 
-                # Proportion bars
                 st.markdown('<div class="step-label" style="margin-top:1rem;">Proporções</div>', unsafe_allow_html=True)
                 props = [
                     ("Altura / Largura", min(ratios["ratio_h_w"] / 1.8, 1.0)),
@@ -542,7 +533,6 @@ with col_result:
                     </div>
                     """, unsafe_allow_html=True)
 
-            # ── Haircut Recommendations ──
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown('<div class="step-label">③ Recomendações de Cortes</div>', unsafe_allow_html=True)
             st.markdown(f"<div style='font-family:Cormorant Garamond,serif;font-size:1.6rem;font-weight:300;color:#1A1A1A;margin-bottom:1.2rem;'>Cortes ideais para rosto <em>{fmt}</em></div>", unsafe_allow_html=True)
@@ -553,9 +543,7 @@ with col_result:
             rec_cols = st.columns(4, gap="small")
             for i, col in enumerate(rec_cols):
                 with col:
-                    # Get image URL
                     img_name, img_url = fallback_images[i % len(fallback_images)]
-                    # Get AI justification if available
                     if i < len(ai_styles):
                         cut_name = ai_styles[i].get("nome", img_name)
                         justif   = ai_styles[i].get("justificativa", "")
@@ -593,7 +581,6 @@ with col_result:
 st.markdown("<br><hr style='border:none;border-top:1px solid #E0D9CC;margin:2rem 0 1rem;'>", unsafe_allow_html=True)
 st.markdown("""
 <div style="text-align:center;color:#B0A89A;font-size:0.78rem;letter-spacing:0.1em;padding-bottom:1rem;">
-    VISAIA · POWERED BY CLAUDE AI + MEDIAPIPE · ANÁLISE FACIAL & VISAGISMO
+    VISAIA · POWERED BY GEMINI AI + MEDIAPIPE · ANÁLISE FACIAL & VISAGISMO
 </div>
 """, unsafe_allow_html=True)
-
