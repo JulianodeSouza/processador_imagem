@@ -1,1 +1,22 @@
-venv
+# Ambiente virtual
+venv/
+.venv/
+
+# Modelo do MediaPipe (baixado automaticamente na primeira execução)
+face_landmarker.task
+
+# Cache do Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Variáveis de ambiente
+.env
+
+# IDEs
+.vscode/
+.idea/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
