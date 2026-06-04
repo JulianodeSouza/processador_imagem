@@ -1,17 +1,17 @@
-# 💈 Identificador de Formato de Rosto e Recomendações de Corte (Visagismo)
+# 💈 VisaIA — Identificador de Formato de Rosto e Recomendações de Corte (Visagismo)
 
-Um aplicativo interativo desenvolvido em Python utilizando **Streamlit**, focado em **Visagismo**. Ele utiliza visão computacional e Inteligência Artificial para analisar a foto do usuário, identificar o formato de seu rosto com precisão matemática e sugerir os melhores cortes de cabelo de acordo com técnicas profissionais de visagismo.
+Um aplicativo desenvolvido em Python utilizando **FastAPI**, focado em **Visagismo**. Ele utiliza visão computacional e Inteligência Artificial para analisar a foto do usuário, identificar o formato de seu rosto com precisão matemática e sugerir os melhores cortes de cabelo de acordo com técnicas profissionais de visagismo.
 
 ---
 
 ## ✨ Funcionalidades do Projeto
 
-- **Detecção Facial de Alta Precisão**: Realiza o mapeamento de 478 pontos faciais utilizando o modelo *MediaPipe Face Mesh*.
+- **Detecção Facial de Alta Precisão**: Realiza o mapeamento de 478 pontos faciais utilizando o modelo *MediaPipe Face Landmarker*.
 - **Extração de Métricas Faciais**: Calcula matematicamente as proporções do rosto (razão altura/largura, mandíbula vs maçãs do rosto, testa vs mandíbula).
-- **Análise por Inteligência Artificial**: Integração com a API do **Claude Vision** para processar a imagem e as métricas extraídas, garantindo uma identificação humanizada e precisa do formato do rosto.
+- **Análise por Inteligência Artificial**: Integração com a API do **Google Gemini** para processar as métricas extraídas, garantindo uma identificação precisa do formato do rosto.
 - **6 Formatos de Rosto Suportados**: Capaz de classificar o rosto como Oval, Redondo, Quadrado, Coração, Oblongo ou Diamante.
 - **Recomendações Personalizadas**: Sugere 4 opções de corte de cabelo ideais para o usuário, acompanhadas de justificativas com base no formato do rosto.
-- **Interface Fluida e Elegante**: Interface moderna e amigável desenvolvida em Streamlit, com visual arrojado estilo "barbearia premium".
+- **API REST**: Interface RESTful construída com FastAPI, com documentação automática via Swagger.
 
 ---
 
@@ -20,8 +20,8 @@ Um aplicativo interativo desenvolvido em Python utilizando **Streamlit**, focado
 Para rodar este projeto em sua própria máquina, siga os passos detalhados abaixo:
 
 ### ⚙️ Pré-requisitos
-- Ter o [Python](https://www.python.org/downloads/) (versão 3.8 ou superior) instalado.
-- Ter uma chave de API do Gemini, gerada gratuitamente no Google AI Studio.
+- Ter o [Python 3.11](https://www.python.org/downloads/) instalado.
+- Ter uma chave de API do Gemini, gerada gratuitamente no [Google AI Studio](https://aistudio.google.com).
 
 ### 🛠️ Passo a Passo
 
@@ -31,15 +31,15 @@ git clone https://github.com/seu-usuario/processador_imagem.git
 cd processador_imagem
 ```
 
-**2. Crie um Ambiente Virtual (Opcional, mas altamente recomendado)**
+**2. Crie um Ambiente Virtual com Python 3.11**
 ```bash
-# Criar o ambiente virtual (chame de 'venv')
-python -m venv venv
+# Criar o ambiente virtual
+py -3.11 -m venv venv
 
-# Ativar o ambiente virtual no Windows:
+# Ativar no Windows:
 venv\Scripts\activate
 
-# Ativar o ambiente virtual no Linux / macOS:
+# Ativar no Linux / macOS:
 source venv/bin/activate
 ```
 
@@ -48,40 +48,90 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**4. Configure a chave da API do Google Gemini **
-Obtenha sua chave de API abrindo o site  [Google AI Studio](https://aistudio.google.com). Após gerar a chave, defina-a como variável de ambiente:
+**4. Configure a chave da API do Google Gemini**
 
-```bash
+Após gerar a chave no [Google AI Studio](https://aistudio.google.com), o método mais simples e confiável é inserir a chave diretamente no código.
 
-# Windows (PowerShell):
-$env:GEMINI_API_KEY = "sua-chave-aqui"
+Abra o `main.py` e localize a função `analyze_with_gemini`. Altere a linha do client na **linha 83**:
 
-# Windows (Prompt de Comando - CMD):
-set GEMINI_API_KEY=sua-chave-aqui
+```python
+# Antes:
+client = genai.Client()
 
-# Linux / macOS:
-export GEMINI_API_KEY="sua-chave-aqui"
+# Depois:
+client = genai.Client(api_key="sua-chave-aqui")
 ```
 
-**5. Execute a aplicação**
-No seu terminal, digite o comando:
+> ⚠️ **Atenção:** Não compartilhe o arquivo `main.py` com a chave inserida publicamente (ex: GitHub). Adicione o `main.py` ao `.gitignore` ou remova a chave antes de commitar.
+
+**5. Execute a API**
 ```bash
-streamlit run app.py
+uvicorn main:app --reload
 ```
-O servidor será iniciado e a aplicação abrirá automaticamente no seu navegador padrão (geralmente através do endereço `http://localhost:8501`).
+
+A API estará disponível em `http://localhost:8000`.
+A documentação interativa estará em `http://localhost:8000/docs`.
+
+> **Nota:** Na primeira execução, o modelo do MediaPipe (`face_landmarker.task`, ~30MB) será baixado automaticamente.
 
 ---
 
 ## 🔬 Como o Processo Funciona (Arquitetura)
 
-1. **📷 Foto do cliente**: O usuário faz o upload de uma imagem.
-2. **🧠 MediaPipe Face Mesh**: A biblioteca escaneia a imagem e mapeia 478 pontos faciais tridimensionais.
+1. **📷 Foto do cliente**: O usuário envia uma imagem via requisição POST para o endpoint `/analisar`.
+2. **🧠 MediaPipe Face Landmarker**: A biblioteca escaneia a imagem e mapeia 478 pontos faciais.
 3. **📐 Cálculo de proporções**: O código mede distâncias reais:
    - Razão entre altura e largura total;
    - Comparação da largura da mandíbula vs maçãs do rosto;
    - Comparação da largura da testa vs mandíbula.
-4. **🤖 Claude Vision API**: A IA recebe a foto juntamente com as medidas precisas, unindo tecnologia visual e dados para realizar a **classificação do formato** e criar as **recomendações de cortes**.
-5. **✂️ Exibição dos resultados**: A tela final exibe o mapa de pontos faciais gerado, qual formato de rosto foi identificado, dicas extras de visagismo e as 4 opções de corte visualizadas em tela.
+4. **🤖 Google Gemini API**: A IA recebe as medidas precisas e realiza a **classificação do formato** e cria as **recomendações de cortes**.
+5. **✂️ Resposta JSON estruturada**: A API retorna o formato de rosto identificado, dicas de visagismo e as 4 opções de corte.
+
+---
+
+## 📡 Endpoints da API
+
+| Método | Rota | Descrição |
+| :--- | :--- | :--- |
+| `GET` | `/` | Checagem de saúde da API |
+| `POST` | `/analisar` | Recebe uma imagem e retorna a análise de visagismo |
+
+### Exemplo de requisição para `/analisar`
+
+```bash
+curl -X POST "http://localhost:8000/analisar" \
+  -H "accept: application/json" \
+  -F "file=@sua_foto.jpg"
+```
+
+### Exemplo de resposta
+
+```json
+{
+  "sucesso": true,
+  "metricas_computadas": {
+    "face_height_px": 320.5,
+    "face_width_px": 240.1,
+    "ratio_height_width": 1.335,
+    "ratio_jaw_cheek": 0.812,
+    "ratio_forehead_jaw": 1.05
+  },
+  "analise_visagismo": {
+    "formato_rosto": "Oval",
+    "confianca": 0.88,
+    "descricao_formato": "Rosto equilibrado com testa levemente mais larga que o queixo.",
+    "caracteristicas_detectadas": ["proporção equilibrada", "queixo suavemente arredondado"],
+    "dica_principal": "O rosto oval é o mais versátil — a maioria dos cortes funciona bem.",
+    "estilos_recomendados": [
+      {"nome": "Undercut", "justificativa": "Valoriza as proporções naturais do rosto."},
+      {"nome": "Pompadour", "justificativa": "Adiciona volume no topo sem alargar as laterais."},
+      {"nome": "Quiff", "justificativa": "Corte moderno que complementa a simetria facial."},
+      {"nome": "Crop", "justificativa": "Corte limpo e atual, ideal para o formato oval."}
+    ],
+    "evitar": ["Franja pesada", "Volume excessivo nas laterais"]
+  }
+}
+```
 
 ---
 
@@ -102,14 +152,16 @@ O servidor será iniciado e a aplicação abrirá automaticamente no seu navegad
 
 ```text
 processador_imagem/
-├── app.py           # Arquivo principal da aplicação (Dashboard e Lógica)
-├── requirements.txt # Lista de bibliotecas e dependências Python
-└── README.md        # Esta documentação
+├── main.py              # Arquivo principal da API REST
+├── requirements.txt     # Lista de dependências Python
+├── face_landmarker.task # Modelo do MediaPipe (baixado automaticamente na 1ª execução)
+└── README.md            # Esta documentação
 ```
 
 ---
 
-## 💡 Dicas para Melhores Resultados ao Usar o App
+## 💡 Dicas para Melhores Resultados
+
 - Utilize uma **foto frontal** em que o rosto esteja centralizado.
 - Procure por um ambiente com **boa iluminação**, preferencialmente luz natural.
 - **Evite** utilizar óculos de sol, chapéus ou penteados que cubram partes do rosto ou da testa.
