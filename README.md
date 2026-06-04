@@ -27,7 +27,7 @@ Para rodar este projeto em sua própria máquina, siga os passos detalhados abai
 
 **1. Clone o repositório e acesse a pasta**
 ```bash
-git clone https://github.com/seu-usuario/processador_imagem.git
+git clone https://github.com/JulianodeSouza/processador_imagem
 cd processador_imagem
 ```
 
@@ -41,6 +41,9 @@ venv\Scripts\activate
 
 # Ativar no Linux / macOS:
 source venv/bin/activate
+
+# Para sair do ambiente virtual (qualquer sistema):
+deactivate
 ```
 
 **3. Instale as dependências do projeto**
@@ -153,6 +156,7 @@ curl -X POST "http://localhost:8000/analisar" \
 ```text
 processador_imagem/
 ├── main.py              # Arquivo principal da API REST
+├── app.py               # Interface visual Streamlit (frontend)
 ├── requirements.txt     # Lista de dependências Python
 ├── face_landmarker.task # Modelo do MediaPipe (baixado automaticamente na 1ª execução)
 └── README.md            # Esta documentação
