@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { RecomendacaoVisagismo, Cliente, Corte } from "../infra/models";
 import FormData from "form-data";
 import fs from "fs";
-import fetch from "node-fetch";
+import axios from "axios";
 
 const PYTHON_API_URL = process.env.PYTHON_API_URL || "http://localhost:8000";
 
@@ -74,21 +74,24 @@ export const VisagismoController = {
       });
 
       // 3. Chama a API Python no endpoint /analisar
-      const pythonResponse = await fetch(`${PYTHON_API_URL}/analisar`, {
-        method: "POST",
-        body: form,
-        headers: form.getHeaders(),
-      });
+      const pythonResponse = await axios.post(
+        `${PYTHON_API_URL}/analisar`,
+        form,
+        {
+          headers: form.getHeaders(),
+        },
+      );
 
-      if (!pythonResponse.ok) {
-        const errorData = await pythonResponse.json() as any;
+      if (pythonResponse.status !== 200) {
+        const errorData = pythonResponse;
         return res.status(502).json({
           error: "Erro ao processar imagem na API Python.",
-          details: errorData?.detail || pythonResponse.statusText,
+          details:
+            errorData?.data || "No additional error information provided.",
         });
       }
 
-      const resultadoPython = await pythonResponse.json() as any;
+      const resultadoPython = pythonResponse.data;
 
       // 4. Extrai os dados retornados pela API Python
       // Estrutura esperada: resultadoPython.analise_visagismo
@@ -102,7 +105,7 @@ export const VisagismoController = {
       const justificativa = [
         analise.dica_principal,
         ...(analise.estilos_recomendados || []).map(
-          (e: any) => `${e.nome}: ${e.justificativa}`
+          (e: any) => `${e.nome}: ${e.justificativa}`,
         ),
       ].join(" | ");
 
