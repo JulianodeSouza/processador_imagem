@@ -9,8 +9,19 @@ export interface AnalysisResult {
   recommendation: {
     id: number;
     faceShape: string;
+    confidence: number;
+    description: string;
+    characteristics: string[];
     justification: string;
-    suggestedCuts: string[];
+    suggestedCuts: { nome: string; justificativa: string }[]; // ← corrigido
+    avoid: string[];
+  };
+  metrics: {
+    face_height_px: number;
+    face_width_px: number;
+    ratio_height_width: number;
+    ratio_jaw_cheek: number;
+    ratio_forehead_jaw: number;
   };
   photoUrl: string;
 }
