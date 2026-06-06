@@ -27,7 +27,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Permite que aplicações frontend (como React, Angular ou Vue) consultem a sua API
+# Permite que aplicações frontend (como React, Angular ou Vue) consultem a API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -131,7 +131,7 @@ Proporções calculadas:
 @app.get("/", tags=["Geral"])
 async def root():
     """Endpoint de checagem de saúde da API."""
-    return {"status": "online", "api": "VisaIA REST API", "versao": "1.0.0"}
+    return {"status": "online", "api": "API Visagismo", "versao": "1.0.0"}
 
 @app.post("/analisar", tags=["Análise Facial"])
 async def analisar_rosto(file: UploadFile = File(...)):
@@ -153,7 +153,7 @@ async def analisar_rosto(file: UploadFile = File(...)):
         img_rgb = np.array(pil_img)
         h, w = img_rgb.shape[:2]
 
-        # 2. Detectar landmarks com a nova API do MediaPipe
+        # 2. Detectar landmarks com a API do MediaPipe
         base_options = mp.tasks.BaseOptions(model_asset_path=MODEL_PATH)
         options = mp.tasks.vision.FaceLandmarkerOptions(
             base_options=base_options,
