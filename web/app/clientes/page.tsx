@@ -175,7 +175,6 @@ export default function ClientesPage(): ReactNode {
                         alert(
                           `Análise concluída! Formato: ${result.faceShape}`,
                         );
-                        // Aqui você pode atualizar o estado do cliente localmente
                       }}
                     />
 

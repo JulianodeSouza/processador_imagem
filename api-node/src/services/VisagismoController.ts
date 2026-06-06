@@ -4,7 +4,7 @@ import FormData from "form-data";
 import fs from "fs";
 import axios from "axios";
 
-const PYTHON_API_URL = process.env.PYTHON_API_URL || "http://localhost:8000";
+const PYTHON_API_URL = process.env.PYTHON_API_URL;
 
 export const VisagismoController = {
   async getAll(req: Request, res: Response) {

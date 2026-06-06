@@ -5,6 +5,7 @@ import { api } from "@/services/api";
 
 // Atualizado para refletir o JSON real da API
 export interface AnalysisResult {
+  faceShape: unknown;
   message: string;
   recommendation: {
     id: number;
@@ -50,7 +51,6 @@ export default function ImageUploadModule({ clientId, onAnalysisComplete }: Imag
     formData.append("clientId", clientId);
 
     try {
-      // Chamada conforme item 12.5 do documento
       const response = await api.post("/visagismo/analisar", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -61,6 +61,7 @@ export default function ImageUploadModule({ clientId, onAnalysisComplete }: Imag
     } catch (error) {
       console.error("Erro ao processar imagem pela IA:", error);
       alert("Erro ao realizar análise. Tente novamente.");
+      window.location.reload();
     } finally {
       setIsUploading(false);
     }

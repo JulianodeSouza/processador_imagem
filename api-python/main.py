@@ -10,6 +10,9 @@ from google.genai import types
 import mediapipe as mp
 import numpy as np
 from PIL import Image
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ─── Download automático do modelo do MediaPipe (só na primeira execução) ──────
 MODEL_PATH = "face_landmarker.task"
@@ -81,7 +84,13 @@ def compute_face_ratios(landmarks, w: int, h: int) -> dict:
     }
 
 def analyze_with_gemini(ratios: dict) -> dict:
-    client = genai.Client(api_key="sua-chave-aqui")
+    api_key = os.getenv("GEMINI_API_KEY") 
+    
+    if not api_key:
+        raise ValueError("Chave GEMINI_API_KEY não encontrada no arquivo .env!")
+
+    # Passa a chave para o cliente
+    client = genai.Client(api_key=api_key)
 
     system_prompt = """Você é um especialista em visagismo e análise facial.
 Analise os dados de proporções faciais fornecidos.
