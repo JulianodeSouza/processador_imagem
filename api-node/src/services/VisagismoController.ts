@@ -1,5 +1,10 @@
 import { Request, Response } from "express";
 import { RecomendacaoVisagismo, Cliente, Corte } from "../infra/models";
+import FormData from "form-data";
+import fs from "fs";
+import fetch from "node-fetch";
+
+const PYTHON_API_URL = process.env.PYTHON_API_URL || "http://localhost:8000";
 
 export const VisagismoController = {
   async getAll(req: Request, res: Response) {
@@ -53,41 +58,87 @@ export const VisagismoController = {
 
   async analisar(req: Request, res: Response) {
     try {
+      // 1. Valida se o arquivo foi enviado
       if (!req.file)
         return res.status(400).json({ error: "No image file uploaded" });
+
       const { clientId } = req.body;
       if (!clientId)
         return res.status(400).json({ error: "clientId is required" });
 
-      const imageUrl = `http://localhost:3333/uploads/${req.file.filename}`;
-
-      const resultadoPython = {
-        faceShape: "Rosto Oval",
-        justificativa: "Proporções ideais equilibradas verticalmente.",
-        corteSugerido: "Corte Clássico",
-      };
-
-      const corteSugeridoDb = await Corte.findOne({
-        where: { nome: resultadoPython.corteSugerido },
+      // 2. Monta o FormData para enviar o arquivo à API Python
+      const form = new FormData();
+      form.append("file", fs.createReadStream(req.file.path), {
+        filename: req.file.originalname,
+        contentType: req.file.mimetype,
       });
 
+      // 3. Chama a API Python no endpoint /analisar
+      const pythonResponse = await fetch(`${PYTHON_API_URL}/analisar`, {
+        method: "POST",
+        body: form,
+        headers: form.getHeaders(),
+      });
+
+      if (!pythonResponse.ok) {
+        const errorData = await pythonResponse.json() as any;
+        return res.status(502).json({
+          error: "Erro ao processar imagem na API Python.",
+          details: errorData?.detail || pythonResponse.statusText,
+        });
+      }
+
+      const resultadoPython = await pythonResponse.json() as any;
+
+      // 4. Extrai os dados retornados pela API Python
+      // Estrutura esperada: resultadoPython.analise_visagismo
+      const analise = resultadoPython.analise_visagismo;
+      const formatoRosto = analise.formato_rosto;
+
+      // Pega o nome do primeiro corte sugerido para buscar no banco
+      const primeiroCorte = analise.estilos_recomendados?.[0]?.nome || null;
+
+      // Monta a justificativa com todos os cortes sugeridos
+      const justificativa = [
+        analise.dica_principal,
+        ...(analise.estilos_recomendados || []).map(
+          (e: any) => `${e.nome}: ${e.justificativa}`
+        ),
+      ].join(" | ");
+
+      // 5. Busca o corte no banco de dados pelo nome
+      const corteSugeridoDb = primeiroCorte
+        ? await Corte.findOne({ where: { nome: primeiroCorte } })
+        : null;
+
+      // 6. Salva a recomendação no banco
       const novaRecomendacao = await RecomendacaoVisagismo.create({
         cliente_id: clientId,
-        formato_rosto_identificado: resultadoPython.faceShape,
+        formato_rosto_identificado: formatoRosto,
         corte_sugerido_id: corteSugeridoDb ? (corteSugeridoDb as any).id : null,
-        justificativa: resultadoPython.justificativa,
+        justificativa,
       });
 
+      const imageUrl = `http://localhost:${process.env.PORT || 3333}/uploads/${req.file.filename}`;
+
+      // 7. Retorna o resultado completo ao cliente
       return res.status(201).json({
         message: "Analysis completed successfully",
         recommendation: {
           id: (novaRecomendacao as any).id,
-          faceShape: (novaRecomendacao as any).formato_rosto_identificado,
-          justification: (novaRecomendacao as any).justificativa,
+          faceShape: formatoRosto,
+          confidence: analise.confianca,
+          description: analise.descricao_formato,
+          characteristics: analise.caracteristicas_detectadas,
+          justification: analise.dica_principal,
+          suggestedCuts: analise.estilos_recomendados,
+          avoid: analise.evitar,
         },
+        metrics: resultadoPython.metricas_computadas,
         photoUrl: imageUrl,
       });
     } catch (error) {
+      console.error("[VisagismoController] Erro:", error);
       return res
         .status(500)
         .json({ error: "Error processing visagism analysis" });
