@@ -15,9 +15,19 @@ interface AppointmentData {
   duration?: string;
   notes?: string;
   avatarSrc?: string;
+  isBookable?: boolean; // Nova propriedade para o frontend
 }
 
-const DAILY_TIMES = ["09:00", "10:30", "11:30", "13:00", "14:30", "15:00", "16:00", "17:30"];
+// 1. Gera a jornada padrão dinamicamente (09:00 às 17:00)
+const gerarJornada = () => {
+  const times = [];
+  for (let i = 9; i < 18; i++) {
+    times.push(`${i.toString().padStart(2, "0")}:00`);
+  }
+  return times;
+};
+
+const DAILY_TIMES = gerarJornada();
 const formatDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export default function AgendaPage(): ReactNode {
@@ -46,7 +56,6 @@ export default function AgendaPage(): ReactNode {
       setIsLoading(true);
       try {
         const response = await api.get(`/agendamentos?data=${currentDateStr}`);
-        // Caso a API retorne um array vazio, setAppointments cuidará disso
         setAppointments(response.data || []);
       } catch (error) {
         console.error("Erro ao buscar agendamentos:", error);
@@ -70,25 +79,71 @@ export default function AgendaPage(): ReactNode {
     setSelectedDate(newDate);
   };
 
+  // 2. Aplica as validações na construção da agenda
   const dailySchedule = useMemo(() => {
+    const agora = new Date();
+    const hojeStr = formatDateStr(agora);
+    const isToday = currentDateStr === hojeStr;
+    const isPastDay = currentDateStr < hojeStr;
+
     return DAILY_TIMES.map((time) => {
       const apt = appointments.find((a) => a.time === time);
       if (apt) return apt;
       
+      // Validação RN01 (Antecedência de 1 Hora)
+      let isBookable = true;
+      if (isPastDay) {
+        isBookable = false;
+      } else if (isToday) {
+        const [hora] = time.split(':');
+        const horaSlot = new Date();
+        horaSlot.setHours(parseInt(hora, 10), 0, 0, 0);
+        
+        const diferencaHoras = (horaSlot.getTime() - agora.getTime()) / (1000 * 60 * 60);
+        if (diferencaHoras < 1) {
+          isBookable = false;
+        }
+      }
+
       return {
         id: `free-${currentDateStr}-${time}`,
         date: currentDateStr,
         time,
         status: "livre" as AppointmentStatus,
+        isBookable
       };
     });
   }, [appointments, currentDateStr]);
 
-  const availableTimesForToday = DAILY_TIMES.filter(
-    (time) => !appointments.some((a) => a.time === time)
-  );
+  // 3. Filtra horários disponíveis considerando a regra de 1 hora para o Modal de Remarcar
+  const availableTimesForToday = useMemo(() => {
+    const agora = new Date();
+    const hojeStr = formatDateStr(agora);
+    const isToday = currentDateStr === hojeStr;
 
-  const handleOpenAddModal = (time: string) => {
+    return DAILY_TIMES.filter(time => {
+      // Se já tem agendamento, não tá disponível
+      if (appointments.some((a) => a.time === time)) return false;
+
+      // Se for hoje, tem que respeitar 1h de antecedência (RN01)
+      if (isToday) {
+        const [hora] = time.split(':');
+        const horaSlot = new Date();
+        horaSlot.setHours(parseInt(hora, 10), 0, 0, 0);
+        
+        const diferencaHoras = (horaSlot.getTime() - agora.getTime()) / (1000 * 60 * 60);
+        return diferencaHoras >= 1;
+      }
+      
+      // Se for dia passado, retorna falso
+      if (currentDateStr < hojeStr) return false;
+
+      return true;
+    });
+  }, [appointments, currentDateStr]);
+
+  const handleOpenAddModal = (time: string, isBookable: boolean) => {
+    if (!isBookable) return;
     setSelectedTimeSlot(time);
     setNewClientName("");
     setNewService("Corte Clássico");
@@ -124,7 +179,7 @@ export default function AgendaPage(): ReactNode {
     }
   };
 
-  const handleOpenRescheduleModal = (id: string, currentTime: string) => {
+  const handleOpenRescheduleModal = (id: string) => {
     setSelectedAppointmentId(id);
     setNewRescheduleTime("");
     setIsRescheduleModalOpen(true);
@@ -204,9 +259,20 @@ export default function AgendaPage(): ReactNode {
 
                       <div className="flex-1 min-w-0">
                         {isFree ? (
-                          <button onClick={() => handleOpenAddModal(slot.time)} className="w-full text-left p-6 rounded-[1.5rem] border border-dashed border-outline-variant/30 bg-surface hover:bg-surface-container/50 transition-all group-hover:border-primary/40 flex justify-between items-center">
-                            <span className="font-label text-on-surface-variant group-hover:text-primary transition-colors">Horário Disponível</span>
-                            <span className="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors">add_circle</span>
+                          <button 
+                            onClick={() => handleOpenAddModal(slot.time, !!slot.isBookable)} 
+                            disabled={!slot.isBookable}
+                            className={`w-full text-left p-6 rounded-[1.5rem] border border-dashed flex justify-between items-center transition-all
+                              ${slot.isBookable 
+                                ? "border-outline-variant/30 bg-surface hover:bg-surface-container/50 group-hover:border-primary/40 cursor-pointer" 
+                                : "border-outline-variant/10 bg-transparent opacity-40 cursor-not-allowed"}`}
+                          >
+                            <span className={`font-label transition-colors ${slot.isBookable ? "text-on-surface-variant group-hover:text-primary" : "text-on-surface-variant/50"}`}>
+                              {slot.isBookable ? "Horário Disponível" : "Horário Indisponível (Expirado)"}
+                            </span>
+                            {slot.isBookable && (
+                              <span className="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors">add_circle</span>
+                            )}
                           </button>
                         ) : (
                           <div className={`p-6 rounded-[1.5rem] bg-surface-container border ${styles.cardBorder} shadow-[0_0_30px_rgba(0,0,0,0.2)] transition-all hover:-translate-y-1 ${styles.opacity || ''}`}>
@@ -242,7 +308,7 @@ export default function AgendaPage(): ReactNode {
                                 <button onClick={() => handleCancelAppointment(slot.id)} className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-label text-[10px] py-2.5 rounded-xl transition-colors uppercase tracking-wider">
                                   Cancelar
                                 </button>
-                                <button onClick={() => handleOpenRescheduleModal(slot.id, slot.time)} className="flex-1 bg-surface-container-high hover:bg-outline-variant/30 text-on-surface font-label text-[10px] py-2.5 rounded-xl transition-colors uppercase tracking-wider">
+                                <button onClick={() => handleOpenRescheduleModal(slot.id)} className="flex-1 bg-surface-container-high hover:bg-outline-variant/30 text-on-surface font-label text-[10px] py-2.5 rounded-xl transition-colors uppercase tracking-wider">
                                   Remarcar
                                 </button>
                               </div>

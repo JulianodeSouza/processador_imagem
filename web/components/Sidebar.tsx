@@ -140,20 +140,6 @@ export default function Sidebar({
           );
         })}
       </nav>
-
-      {/* Novo Agendamento Button */}
-      <div className="px-4 lg:px-6 mt-auto border-t border-outline-variant/20 pt-6">
-        <button
-          onClick={() => {
-            onNewSchedule?.();
-            onClose?.();
-          }}
-          className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-secondary to-secondary/80 text-on-secondary font-label text-xs font-bold tracking-wide hover:from-secondary hover:to-secondary/90 hover:shadow-lg hover:shadow-secondary/30 transition-all duration-300 active:scale-95"
-        >
-          <span className="material-symbols-outlined text-lg">add_circle</span>
-          <span>{newScheduleText}</span>
-        </button>
-      </div>
     </aside>
   );
 }

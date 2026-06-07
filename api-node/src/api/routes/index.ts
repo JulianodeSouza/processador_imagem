@@ -37,6 +37,7 @@ routes.get("/agendamentos/:id", AgendamentoController.getById);
 routes.post("/agendamentos", AgendamentoController.create);
 routes.put("/agendamentos/:id", AgendamentoController.update);
 routes.delete("/agendamentos/:id", AgendamentoController.delete);
+routes.get('/agendamentos/disponibilidade', AgendamentoController.getDisponibilidade);
 
 // Clientes
 routes.get("/clientes", ClienteController.getAll);

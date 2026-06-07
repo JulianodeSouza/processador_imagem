@@ -56,14 +56,6 @@ export default function Dashboard(): ReactNode {
                 O seu atelier digital está pronto para os rituais de hoje.
               </p>
             </div>
-            
-            {/* Status Neon Chip */}
-            <div className="flex items-center gap-3 bg-surface-container-high px-5 py-2.5 rounded-full border border-outline-variant/20 shadow-[0_0_20px_rgba(129,236,255,0.05)]">
-              <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse shadow-[0_0_12px_#81ecff]"></span>
-              <span className="font-label text-xs font-bold text-primary uppercase tracking-widest">
-                Operações ao Vivo
-              </span>
-            </div>
           </section>
 
           {/* Metrics Grid */}

@@ -18,7 +18,7 @@ interface FormData {
 
 interface Barber {
   id: string;
-  nome: string;
+  name: string;
 }
 
 interface ServiceType {
@@ -40,6 +40,8 @@ export default function NovoAgendamentoPage(): ReactNode {
     notes: "",
   });
 
+  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
+  const [loadingTimes, setLoadingTimes] = useState(false);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<ServiceType[]>([]);
   const [submitted, setSubmitted] = useState(false);
@@ -49,7 +51,6 @@ export default function NovoAgendamentoPage(): ReactNode {
   useEffect(() => {
     async function fetchData() {
       try {
-        // Promise.all permite buscar ambos ao mesmo tempo, deixando a tela mais rápida
         const [barbersRes, servicesRes] = await Promise.all([
           api.get("/barbeiros"),
           api.get("/cortes"),
@@ -80,7 +81,6 @@ export default function NovoAgendamentoPage(): ReactNode {
     setIsLoading(true);
 
     try {
-      // Faz o POST para o backend
       await api.post("/agendamentos", formData);
 
       setSubmitted(true);
@@ -106,6 +106,54 @@ export default function NovoAgendamentoPage(): ReactNode {
   };
 
   const servicoSelecionado = services.find((s) => s.nome === formData.service);
+
+  const gerarHorariosDisponiveis = () => {
+    const horarios = [];
+    const horaAbertura = 9;
+    const horaFechamento = 18;
+
+    for (let i = horaAbertura; i <= horaFechamento; i++) {
+      const horaFormatada = i.toString().padStart(2, '0');
+
+      // Adiciona a hora cheia (ex: 09:00)
+      horarios.push(`${horaFormatada}:00`);
+
+      // Se quiser agendamentos a cada 30 minutos, adicione esta lógica:
+      // (Evita adicionar 18:30 se o fechamento é exatamente às 18:00)
+      if (i < horaFechamento) {
+        horarios.push(`${horaFormatada}:30`);
+      }
+    }
+    return horarios;
+  };
+
+  useEffect(() => {
+    async function fetchDisponibilidade() {
+      if (formData.date && formData.barber) {
+        setLoadingTimes(true);
+        try {
+          const res = await api.get("/agendamentos/disponibilidade", {
+            params: { date: formData.date, barber: formData.barber }
+          });
+          setAvailableTimes(res.data);
+
+          // Se o horário que estava selecionado não estiver mais disponível, limpa ele
+          if (formData.time && !res.data.includes(formData.time)) {
+            setFormData(prev => ({ ...prev, time: "" }));
+          }
+        } catch (error) {
+          console.error("Erro ao buscar horários", error);
+        } finally {
+          setLoadingTimes(false);
+        }
+      } else {
+        setAvailableTimes([]);
+      }
+    }
+    fetchDisponibilidade();
+  }, [formData]);
+
+  const horariosOpcoes = gerarHorariosDisponiveis();
 
   return (
     <div className="w-full bg-surface min-h-screen">
@@ -225,23 +273,30 @@ export default function NovoAgendamentoPage(): ReactNode {
                       <label className="block text-on-surface font-label text-sm font-semibold mb-2">
                         Serviço *
                       </label>
-                      <select
-                        name="service"
-                        value={formData.service}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary appearance-none"
-                      >
-                        <option value="">Selecione um serviço</option>
-                        {services.map((service) => (
-                          <option key={service.id} value={service.nome}>
-                            {service.nome}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <select
+                          name="service"
+                          value={formData.service}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary appearance-none pr-10"
+                        >
+                          <option value="">Selecione um serviço</option>
+                          {services.map((service) => (
+                            <option key={service.id} value={service.nome}>
+                              {service.nome}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-on-surface-variant">
+                          <span className="material-symbols-outlined text-xl">
+                            expand_more
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* CAIXINHA DE DESCRIÇÃO DO CORTE (Nova) */}
+                    {/* CAIXINHA DE DESCRIÇÃO DO CORTE */}
                     {servicoSelecionado && servicoSelecionado.descricao && (
                       <div className="p-4 rounded-lg bg-secondary/10 border border-secondary/20 transition-all duration-300 animate-fade-in">
                         <h4 className="text-secondary font-semibold text-sm mb-1 flex items-center gap-1">
@@ -265,25 +320,32 @@ export default function NovoAgendamentoPage(): ReactNode {
                     )}
                   </div>
 
-                  {/* COLUNA DO BARBEIRO (Mantém como estava) */}
+                  {/* COLUNA DO BARBEIRO */}
                   <div>
                     <label className="block text-on-surface font-label text-sm font-semibold mb-2">
                       Barbeiro *
                     </label>
-                    <select
-                      name="barber"
-                      value={formData.barber}
-                      onChange={handleChange}
-                      required
-                      className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary appearance-none"
-                    >
-                      <option value="">Selecione um barbeiro</option>
-                      {barbers.map((barber) => (
-                        <option key={barber.id} value={barber.nome}>
-                          {barber.nome}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <select
+                        name="barber"
+                        value={formData.barber}
+                        onChange={handleChange}
+                        required
+                        className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary appearance-none pr-10"
+                      >
+                        <option value="">Selecione um barbeiro</option>
+                        {barbers.map((barber) => (
+                          <option key={barber.id} value={barber.name}>
+                            {barber.name}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-on-surface-variant">
+                        <span className="material-symbols-outlined text-xl">
+                          expand_more
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -312,18 +374,21 @@ export default function NovoAgendamentoPage(): ReactNode {
                     className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary"
                   />
                 </div>
+
                 <div>
                   <label className="block text-on-surface font-label text-sm font-semibold mb-2">
                     Hora *
                   </label>
-                  <input
-                    type="time"
-                    name="time"
-                    value={formData.time}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary"
-                  />
+                  <select id="time" name="time" required className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary appearance-none disabled:opacity-60 disabled:cursor-not-allowed">
+                    <option value="">Selecione o horário...</option>
+                    {horariosOpcoes.map((horario) => (
+                      <option key={horario} value={horario}>
+                        {horario}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                 </div>
               </div>
             </div>

@@ -17,7 +17,6 @@ export default function AppointmentsList({
   title = "Próximos Agendamentos",
   showViewAll = true,
   viewAllHref = "/agenda",
-  onAppointmentMore,
 }: AppointmentsListProps): ReactNode {
   return (
     <section className="lg:col-span-2 space-y-4 lg:space-y-6">
@@ -41,7 +40,6 @@ export default function AppointmentsList({
             <AppointmentCard
               key={appointment.id}
               appointment={appointment}
-              onMore={onAppointmentMore}
             />
           ))
         ) : (
