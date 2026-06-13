@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { ReactNode, useState, useEffect } from "react";
 import { api } from "../../services/api";
-import ImageUploadModule from "@/components/ImageUploadModule";
+import ImageUploadModule, { AnalysisResult } from "@/components/ImageUploadModule";
+import VisagismResult from "@/components/VisagismResult"; // <-- NOVO IMPORT
 
 interface ClientPhoto {
   id: string;
@@ -32,6 +34,7 @@ interface Client {
   email: string;
   history: CutHistory[];
   visagism?: VisagismProfile;
+  historicoAnalises?: Array<unknown>;
 }
 
 export default function ClientesPage(): ReactNode {
@@ -42,6 +45,22 @@ export default function ClientesPage(): ReactNode {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, ""); // Remove tudo o que não for número
+
+    if (value.length <= 10) {
+      // Máscara para telefone fixo: (XX) XXXX-XXXX
+      value = value.replace(/^(\d{2})(\d)/g, "($1) $2");
+      value = value.replace(/(\d{4})(\d)/, "$1-$2");
+    } else {
+      // Máscara para celular: (XX) XXXXX-XXXX
+      value = value.replace(/^(\d{2})(\d)/g, "($1) $2");
+      value = value.replace(/(\d{5})(\d)/, "$1-$2");
+    }
+
+    setNewPhone(value.substring(0, 15)); // Limita o tamanho máximo a 15 caracteres
+  };
+  const [resultadoIA, setResultadoIA] = useState<AnalysisResult | null>(null);
 
   // Buscar todos os clientes da API ao montar o componente
   useEffect(() => {
@@ -63,7 +82,6 @@ export default function ClientesPage(): ReactNode {
     try {
       const payload = { name: newName, phone: newPhone };
       const response = await api.post("/clientes", payload);
-      // Atualiza a lista com o novo cliente retornado da API
       setClients((prev) => [...prev, { ...response.data, history: [] }]);
       setIsAddModalOpen(false);
       setNewName("");
@@ -74,16 +92,40 @@ export default function ClientesPage(): ReactNode {
   };
 
   const handleSelectClient = async (client: Client) => {
+    setResultadoIA(null);
+
     try {
-      // Opcional: Se a listagem não traz os detalhes, busca da API os dados completos
+      // 2. Faz uma ÚNICA chamada para a API
       const response = await api.get(`/clientes/${client.id}`);
-      setSelectedClient(response.data);
+      const clienteData = response.data;
+
+      // 3. Define os dados do cliente para a Ficha Técnica
+      setSelectedClient(clienteData);
+
+      if (clienteData.historicoAnalises && clienteData.historicoAnalises.length > 0) {
+        setResultadoIA(clienteData.historicoAnalises[0]); // Seleciona a mais recente
+      }
+
     } catch (error) {
-      console.error(
-        "Erro ao buscar detalhes do cliente, usando dados locais.",
-        error,
-      );
+      console.error("Erro ao buscar detalhes do cliente, usando dados locais.", error);
       setSelectedClient(client);
+    }
+  };
+
+  const handleDeleteClient = async (clientId: string) => {
+    // Confirmação simples de segurança para evitar exclusões acidentais
+    const confirmDelete = window.confirm("Tem certeza que deseja remover este cliente? O histórico também será perdido.");
+    if (!confirmDelete) return;
+
+    try {
+      await api.delete(`/clientes/${clientId}`);
+      // Remove o cliente da lista lateral
+      setClients((prev) => prev.filter((c) => c.id !== clientId));
+      // Limpa a tela principal
+      setSelectedClient(null);
+    } catch (error) {
+      console.error("Erro ao remover cliente:", error);
+      alert("Ocorreu um erro ao tentar remover o cliente.");
     }
   };
 
@@ -152,9 +194,17 @@ export default function ClientesPage(): ReactNode {
                   </p>
                 </div>
 
+                <button
+                  onClick={() => handleDeleteClient(selectedClient.id)}
+                  className="p-2 text-red-500 hover:bg-red-500/10 rounded-xl transition-colors flex items-center gap-2 text-sm font-label"
+                  title="Remover Cliente"
+                >
+                  <span className="material-symbols-outlined">delete</span>
+                  <span className="hidden sm:inline">Remover</span>
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                 {/* Módulo de Visagismo e Preferências */}
                 <div>
                   <h3 className="flex items-center gap-2 text-xl font-headline font-bold text-on-surface mb-6">
@@ -172,20 +222,21 @@ export default function ClientesPage(): ReactNode {
                     <ImageUploadModule
                       clientId={selectedClient.id}
                       onAnalysisComplete={(result) => {
-                        alert(
-                          `Análise concluída! Formato: ${result.faceShape}`,
-                        );
+                        // <-- ATUALIZA O ESTADO AQUI EM VEZ DO ALERT
+                        setResultadoIA(result);
                       }}
                     />
 
-                    <ul className="list-disc list-inside text-sm text-on-surface space-y-1 mt-4">
-                      {selectedClient.visagism?.recommendedCuts?.map(
-                        (cut, i) => <li key={i}>{cut}</li>,
-                      ) || <li>Aguardando análise de imagem...</li>}
-                    </ul>
+                    {/* Exibe uma mensagem amigável enquanto a IA não retorna resultado */}
+                    {!resultadoIA && (
+                      <p className="text-xs text-on-surface-variant italic mt-4 text-center">
+                        Faça o upload de uma foto do cliente com o rosto bem visível para gerar recomendações de cortes.
+                      </p>
+                    )}
                   </div>
                 </div>
 
+                {/* Histórico e Fotos */}
                 {/* Histórico e Fotos */}
                 <div>
                   <h3 className="flex items-center gap-2 text-xl font-headline font-bold text-on-surface mb-6">
@@ -196,6 +247,7 @@ export default function ClientesPage(): ReactNode {
                   </h3>
 
                   <div className="space-y-6">
+                    {/* 1. RENDERIZA OS CORTES NORMAIS */}
                     {selectedClient.history &&
                       selectedClient.history.length > 0 ? (
                       selectedClient.history.map((record) => (
@@ -233,12 +285,63 @@ export default function ClientesPage(): ReactNode {
                       ))
                     ) : (
                       <p className="text-sm text-on-surface-variant">
-                        Nenhum histórico registrado.
+                        Nenhum corte registrado.
                       </p>
                     )}
+
+                    {/* 2. ACRESCENTA AS ANÁLISES DA IA MANTENDO O MESMO LAYOUT DA TIMELINE */}
+                    {selectedClient.historicoAnalises && selectedClient.historicoAnalises.length > 0 && (
+                      <div className="pt-4 mt-4 border-t border-dashed border-outline-variant/20 space-y-6">
+                        <p className="text-xs font-label text-on-surface-variant uppercase tracking-wider mb-4">
+                          Diagnósticos de Visagismo
+                        </p>
+
+                        {selectedClient.historicoAnalises.map((analise: any, index: number) => (
+                          <div
+                            key={`analise-${analise.recommendation.id || index}`}
+                            className="relative pl-6 border-l-2 border-outline-variant/20"
+                          >
+                            {/* Usamos a cor 'primary' na bolinha para diferenciar que é IA */}
+                            <div className="absolute w-3 h-3 bg-primary rounded-full -left-[7px] top-1"></div>
+
+                            <p className="text-xs font-label text-primary mb-1">
+                              {analise.recommendation.createdAt
+                                ? new Date(analise.recommendation.createdAt).toLocaleDateString("pt-BR")
+                                : "Data indisponível"}
+                            </p>
+
+                            <p className="font-headline font-bold text-on-surface">
+                              Análise Visagista - Formato {analise.recommendation.faceShape}
+                            </p>
+
+                            <p className="text-xs text-on-surface-variant mt-1 mb-3">
+                              Corte Principal: <strong className="text-primary">{analise.recommendation.suggestedCutName}</strong>
+                            </p>
+
+                            <div className="bg-surface-container-low p-3 rounded-xl border border-outline-variant/20 text-xs text-on-surface">
+                              <p className="mb-2 leading-relaxed">
+                                💡 <strong>Diretriz:</strong> {analise.recommendation.justification}
+                              </p>
+                              <ul className="list-disc list-inside space-y-1">
+                                {analise.recommendation.suggestedCuts.map((cut: any, idx: number) => (
+                                  <li key={idx}>
+                                    <strong className="text-primary">{cut.nome}</strong>: {cut.justificativa}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                   </div>
                 </div>
               </div>
+
+              {/* <-- RENDERIZAÇÃO DO RESULTADO DA IA (Ocupa a largura total da ficha técnica) */}
+              <VisagismResult result={resultadoIA} />
+
             </div>
           ) : (
             <div className="h-full min-h-[600px] flex flex-col items-center justify-center border border-dashed border-outline-variant/20 rounded-[2rem] text-on-surface-variant">
@@ -251,7 +354,7 @@ export default function ClientesPage(): ReactNode {
         </section>
       </main>
 
-      {/* Modal de Cadastro */}
+      {/* Modal de Cadastro omitido para brevidade mas mantido igual no código */}
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-surface-container p-8 rounded-[2rem] w-full max-w-md border border-outline-variant/20 shadow-2xl">
@@ -278,7 +381,7 @@ export default function ClientesPage(): ReactNode {
                 <input
                   type="text"
                   value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
+                  onChange={handlePhoneChange}
                   className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-xl px-4 py-3 outline-none focus:border-primary transition-colors"
                   placeholder="(00) 00000-0000"
                 />

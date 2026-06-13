@@ -1,21 +1,27 @@
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useState, ChangeEvent } from "react";
+import { useState, ChangeEvent, useEffect } from "react";
 import { api } from "@/services/api";
 
-// Atualizado para refletir o JSON real da API
 export interface AnalysisResult {
   faceShape?: string; 
   message: string;
   recommendation: {
     id: number;
+    clientId: string;
+    clientName: string;
     faceShape: string;
+    suggestedCutId: number | null;
+    suggestedCutName: string;
     confidence: number;
     description: string;
     characteristics: string[];
     justification: string;
-    suggestedCuts: { nome: string; justificativa: string }[]; // ← corrigido
+    suggestedCuts: { nome: string; justificativa: string }[];
     avoid: string[];
+    createdAt: string | Date;
   };
   metrics: {
     face_height_px: number;
@@ -26,6 +32,7 @@ export interface AnalysisResult {
   };
   photoUrl: string;
 }
+
 interface ImageUploadModuleProps {
   clientId: string;
   onAnalysisComplete?: (result: AnalysisResult) => void;
@@ -34,6 +41,12 @@ interface ImageUploadModuleProps {
 export default function ImageUploadModule({ clientId, onAnalysisComplete }: ImageUploadModuleProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+
+  // CORREÇÃO 2: Limpa a foto de preview e o estado de upload ao trocar de cliente
+  useEffect(() => {
+    setPreview(null);
+    setIsUploading(false);
+  }, [clientId]);
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -61,24 +74,51 @@ export default function ImageUploadModule({ clientId, onAnalysisComplete }: Imag
     } catch (error) {
       console.error("Erro ao processar imagem pela IA:", error);
       alert("Erro ao realizar análise. Tente novamente.");
+      
+      // CORREÇÃO 1: Limpa o preview automaticamente caso ocorra um erro na API
+      setPreview(null);
     } finally {
       setIsUploading(false);
     }
   };
 
+  // AÇÃO MANUAL: Permite ao usuário remover a foto escolhida a qualquer momento
+  const handleRemovePhoto = () => {
+    setPreview(null);
+    setIsUploading(false);
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-outline-variant/30 rounded-2xl bg-surface-container-low hover:border-primary/50 transition-all">
+    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-outline-variant/30 rounded-2xl bg-surface-container-low hover:border-primary/50 transition-all w-full">
       {preview ? (
-        <div className="relative w-32 h-32 mb-4">
+        <div className="relative w-32 h-32 mb-4 group">
           <img src={preview} alt="Preview" className="w-full h-full object-cover rounded-xl" />
+          
+          {/* Botão de fechar (X) sobreposto para remoção manual */}
+          {!isUploading && (
+            <button
+              onClick={handleRemovePhoto}
+              type="button"
+              className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow-md hover:bg-red-700 transition-colors flex items-center justify-center border border-surface"
+              title="Remover foto"
+            >
+              <span className="material-symbols-outlined text-sm font-bold">close</span>
+            </button>
+          )}
         </div>
       ) : (
         <span className="material-symbols-outlined text-4xl text-on-surface-variant mb-4">add_a_photo</span>
       )}
 
-      <label className="cursor-pointer bg-primary text-black px-4 py-2 rounded-lg font-label text-xs uppercase tracking-wider hover:bg-primary/90">
+      <label className={`bg-primary text-black px-4 py-2 rounded-lg font-label text-xs uppercase tracking-wider transition-all ${isUploading ? "opacity-40 pointer-events-none" : "cursor-pointer hover:bg-primary/90"}`}>
         {isUploading ? "Analisando..." : "Selecionar Foto"}
-        <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} disabled={isUploading} />
+        <input 
+          type="file" 
+          className="hidden" 
+          accept="image/*" 
+          onChange={handleFileChange} 
+          disabled={isUploading} 
+        />
       </label>
 
       {isUploading && <p className="mt-2 text-xs text-primary animate-pulse">IA está processando o perfil...</p>}

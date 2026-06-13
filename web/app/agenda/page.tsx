@@ -15,14 +15,26 @@ interface AppointmentData {
   duration?: string;
   notes?: string;
   avatarSrc?: string;
-  isBookable?: boolean; // Nova propriedade para o frontend
+  isBookable?: boolean;
 }
 
-// 1. Gera a jornada padrão dinamicamente (09:00 às 17:00)
+interface Client {
+  id: string;
+  name: string;
+}
+
+interface Barber {
+  id: string;
+  name: string;
+}
+
+// 1. Jornada atualizada para gerar horários de 30 em 30 minutos
 const gerarJornada = () => {
   const times = [];
   for (let i = 9; i < 18; i++) {
-    times.push(`${i.toString().padStart(2, "0")}:00`);
+    const horaFormatada = i.toString().padStart(2, "0");
+    times.push(`${horaFormatada}:00`);
+    times.push(`${horaFormatada}:30`);
   }
   return times;
 };
@@ -33,38 +45,42 @@ const formatDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1
 export default function AgendaPage(): ReactNode {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [appointments, setAppointments] = useState<AppointmentData[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Estados dos Modais
+  const [barbers, setBarbers] = useState<Barber[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
-  
-  // Estados de Formulário
+
   const [selectedTimeSlot, setSelectedTimeSlot] = useState("");
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
-  const [newClientName, setNewClientName] = useState("");
+
+  const [newClientId, setNewClientId] = useState("");
   const [newService, setNewService] = useState("");
   const [newRescheduleTime, setNewRescheduleTime] = useState("");
-
+  const [newBarber, setNewBarber] = useState("");
   const currentDateStr = formatDateStr(selectedDate);
   const displayDay = selectedDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
   const displayWeekday = selectedDate.toLocaleDateString("pt-BR", { weekday: "long" });
 
-  // Buscar Agendamentos da API
   useEffect(() => {
-    async function fetchAppointments() {
+    async function fetchData() {
       setIsLoading(true);
       try {
-        const response = await api.get(`/agendamentos?data=${currentDateStr}`);
-        setAppointments(response.data || []);
+        const [aptResponse, cliResponse, barbResponse] = await Promise.all([
+          api.get(`/agendamentos?data=${currentDateStr}`),
+          api.get('/clientes'),
+          api.get('/barbeiros') // <-- Busca os barbeiros da API
+        ]);
+        setAppointments(aptResponse.data || []);
+        setClients(cliResponse.data || []);
+        setBarbers(barbResponse.data || []); // <-- Salva no estado
       } catch (error) {
-        console.error("Erro ao buscar agendamentos:", error);
-        setAppointments([]);
+        console.error("Erro ao buscar dados:", error);
       } finally {
         setIsLoading(false);
       }
     }
-    fetchAppointments();
+    fetchData();
   }, [currentDateStr]);
 
   const handlePrevDay = () => {
@@ -79,7 +95,6 @@ export default function AgendaPage(): ReactNode {
     setSelectedDate(newDate);
   };
 
-  // 2. Aplica as validações na construção da agenda
   const dailySchedule = useMemo(() => {
     const agora = new Date();
     const hojeStr = formatDateStr(agora);
@@ -89,16 +104,16 @@ export default function AgendaPage(): ReactNode {
     return DAILY_TIMES.map((time) => {
       const apt = appointments.find((a) => a.time === time);
       if (apt) return apt;
-      
-      // Validação RN01 (Antecedência de 1 Hora)
+
       let isBookable = true;
       if (isPastDay) {
         isBookable = false;
       } else if (isToday) {
-        const [hora] = time.split(':');
+        // 2. Extração de horas e minutos corrigida para calcular intervalos de meia hora
+        const [hora, minuto] = time.split(':');
         const horaSlot = new Date();
-        horaSlot.setHours(parseInt(hora, 10), 0, 0, 0);
-        
+        horaSlot.setHours(parseInt(hora, 10), parseInt(minuto, 10), 0, 0);
+
         const diferencaHoras = (horaSlot.getTime() - agora.getTime()) / (1000 * 60 * 60);
         if (diferencaHoras < 1) {
           isBookable = false;
@@ -115,29 +130,23 @@ export default function AgendaPage(): ReactNode {
     });
   }, [appointments, currentDateStr]);
 
-  // 3. Filtra horários disponíveis considerando a regra de 1 hora para o Modal de Remarcar
   const availableTimesForToday = useMemo(() => {
     const agora = new Date();
     const hojeStr = formatDateStr(agora);
     const isToday = currentDateStr === hojeStr;
 
     return DAILY_TIMES.filter(time => {
-      // Se já tem agendamento, não tá disponível
       if (appointments.some((a) => a.time === time)) return false;
-
-      // Se for hoje, tem que respeitar 1h de antecedência (RN01)
       if (isToday) {
-        const [hora] = time.split(':');
+        // 3. Extração de horas e minutos corrigida para o modal de Remarcar
+        const [hora, minuto] = time.split(':');
         const horaSlot = new Date();
-        horaSlot.setHours(parseInt(hora, 10), 0, 0, 0);
-        
+        horaSlot.setHours(parseInt(hora, 10), parseInt(minuto, 10), 0, 0);
+
         const diferencaHoras = (horaSlot.getTime() - agora.getTime()) / (1000 * 60 * 60);
         return diferencaHoras >= 1;
       }
-      
-      // Se for dia passado, retorna falso
       if (currentDateStr < hojeStr) return false;
-
       return true;
     });
   }, [appointments, currentDateStr]);
@@ -145,23 +154,29 @@ export default function AgendaPage(): ReactNode {
   const handleOpenAddModal = (time: string, isBookable: boolean) => {
     if (!isBookable) return;
     setSelectedTimeSlot(time);
-    setNewClientName("");
+    setNewClientId("");
+    setNewBarber(""); // <-- Reseta o barbeiro ao abrir
     setNewService("Corte Clássico");
     setIsAddModalOpen(true);
   };
 
   const handleSaveAppointment = async () => {
-    if (!newClientName.trim()) return;
+    if (!newClientId || !newBarber) return;
     try {
       const payload = {
         date: currentDateStr,
         time: selectedTimeSlot,
-        clientName: newClientName,
+        clientId: newClientId,
+        barber: newBarber,
         service: newService,
         status: "confirmado"
       };
-      const response = await api.post("/agendamentos", payload);
-      setAppointments((prev) => [...prev, response.data]);
+
+      await api.post("/agendamentos", payload);
+
+      const refreshResponse = await api.get(`/agendamentos?data=${currentDateStr}`);
+      setAppointments(refreshResponse.data || []);
+
       setIsAddModalOpen(false);
     } catch (error) {
       console.error("Erro ao criar agendamento:", error);
@@ -213,7 +228,7 @@ export default function AgendaPage(): ReactNode {
     <div className="w-full bg-surface min-h-screen relative">
       <main className="lg:pl-72 pt-28 pb-20">
         <div className="px-6 lg:px-12 max-w-5xl mx-auto">
-          
+
           <section className="mb-14 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
             <div>
               <p className="text-primary font-label mb-2 tracking-widest uppercase">Sua Linha do Tempo</p>
@@ -250,7 +265,7 @@ export default function AgendaPage(): ReactNode {
                     <div key={slot.id} className="relative flex items-start gap-6 group">
                       <div className="w-20 md:w-24 pt-4 flex flex-col items-end flex-shrink-0 relative z-10">
                         <span className={`font-headline text-xl md:text-2xl font-bold ${isFree ? "text-on-surface-variant/50" : "text-on-surface"}`}>{slot.time}</span>
-                        {!isFree && <span className="font-label text-[10px] text-on-surface-variant mt-1">{slot.duration || '45 min'}</span>}
+                        {!isFree && <span className="font-label text-[10px] text-on-surface-variant mt-1">{slot.duration || '30 min'}</span>}
                       </div>
 
                       <div className="relative z-10 pt-5">
@@ -259,12 +274,12 @@ export default function AgendaPage(): ReactNode {
 
                       <div className="flex-1 min-w-0">
                         {isFree ? (
-                          <button 
-                            onClick={() => handleOpenAddModal(slot.time, !!slot.isBookable)} 
+                          <button
+                            onClick={() => handleOpenAddModal(slot.time, !!slot.isBookable)}
                             disabled={!slot.isBookable}
                             className={`w-full text-left p-6 rounded-[1.5rem] border border-dashed flex justify-between items-center transition-all
-                              ${slot.isBookable 
-                                ? "border-outline-variant/30 bg-surface hover:bg-surface-container/50 group-hover:border-primary/40 cursor-pointer" 
+                              ${slot.isBookable
+                                ? "border-outline-variant/30 bg-surface hover:bg-surface-container/50 group-hover:border-primary/40 cursor-pointer"
                                 : "border-outline-variant/10 bg-transparent opacity-40 cursor-not-allowed"}`}
                           >
                             <span className={`font-label transition-colors ${slot.isBookable ? "text-on-surface-variant group-hover:text-primary" : "text-on-surface-variant/50"}`}>
@@ -331,26 +346,56 @@ export default function AgendaPage(): ReactNode {
           <div className="bg-surface-container p-8 rounded-[2rem] w-full max-w-md border border-outline-variant/20 shadow-2xl">
             <h2 className="text-2xl font-headline font-bold text-on-surface mb-2">Novo Agendamento</h2>
             <p className="text-on-surface-variant font-label text-sm mb-6">Para o horário das <strong className="text-primary">{selectedTimeSlot}</strong></p>
-            
+
             <div className="space-y-4">
+              {/* Select do Cliente (já existente) */}
               <div>
-                <label className="block text-xs font-label text-on-surface-variant mb-2 uppercase tracking-wider">Nome do Cliente</label>
-                <input type="text" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-xl px-4 py-3 outline-none focus:border-primary transition-colors" placeholder="Ex: João Silva" />
+                <label className="block text-xs font-label text-on-surface-variant mb-2 uppercase tracking-wider">Cliente *</label>
+                <div className="relative">
+                  <select value={newClientId} onChange={(e) => setNewClientId(e.target.value)} className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-xl px-4 py-3 outline-none focus:border-primary transition-colors appearance-none" required>
+                    <option value="" disabled>Selecione um cliente...</option>
+                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-on-surface-variant">
+                    <span className="material-symbols-outlined text-xl">expand_more</span>
+                  </div>
+                </div>
               </div>
+
+              {/* NOVO: Select do Barbeiro */}
+              <div>
+                <label className="block text-xs font-label text-on-surface-variant mb-2 uppercase tracking-wider">Barbeiro *</label>
+                <div className="relative">
+                  <select value={newBarber} onChange={(e) => setNewBarber(e.target.value)} className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-xl px-4 py-3 outline-none focus:border-primary transition-colors appearance-none" required>
+                    <option value="" disabled>Selecione um barbeiro...</option>
+                    {barbers.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-on-surface-variant">
+                    <span className="material-symbols-outlined text-xl">expand_more</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Select do Serviço (já existente) */}
               <div>
                 <label className="block text-xs font-label text-on-surface-variant mb-2 uppercase tracking-wider">Serviço</label>
-                <select value={newService} onChange={(e) => setNewService(e.target.value)} className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-xl px-4 py-3 outline-none focus:border-primary transition-colors appearance-none">
-                  <option value="Corte Clássico">Corte Clássico</option>
-                  <option value="Escultura de Barba + Spa">Escultura de Barba + Spa</option>
-                  <option value="The Executive Ritual">The Executive Ritual</option>
-                  <option value="Análise de Imagem + Corte Visagista">Análise de Imagem + Corte Visagista</option>
-                </select>
+                <div className="relative">
+                  <select value={newService} onChange={(e) => setNewService(e.target.value)} className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-xl px-4 py-3 outline-none focus:border-primary transition-colors appearance-none">
+                    <option value="Corte Clássico">Corte Clássico</option>
+                    <option value="Escultura de Barba + Spa">Escultura de Barba + Spa</option>
+                    <option value="The Executive Ritual">The Executive Ritual</option>
+                    <option value="Análise de Imagem + Corte Visagista">Análise de Imagem + Corte Visagista</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-on-surface-variant">
+                    <span className="material-symbols-outlined text-xl">expand_more</span>
+                  </div>
+                </div>
               </div>
             </div>
 
             <div className="flex justify-end gap-3 mt-8">
               <button onClick={() => setIsAddModalOpen(false)} className="px-6 py-2.5 rounded-xl font-label text-xs text-on-surface-variant hover:bg-surface-container-high transition-colors uppercase tracking-wider">Voltar</button>
-              <button onClick={handleSaveAppointment} disabled={!newClientName.trim()} className="px-6 py-2.5 rounded-xl font-label text-xs bg-primary text-black hover:bg-primary/90 disabled:opacity-50 transition-colors uppercase tracking-wider">Confirmar</button>
+              <button onClick={handleSaveAppointment} disabled={!newClientId || !newBarber || !newService} className="px-6 py-2.5 rounded-xl font-label text-xs bg-primary text-black hover:bg-primary/90 disabled:opacity-50 transition-colors uppercase tracking-wider">Confirmar</button>
             </div>
           </div>
         </div>
@@ -362,7 +407,7 @@ export default function AgendaPage(): ReactNode {
           <div className="bg-surface-container p-8 rounded-[2rem] w-full max-w-md border border-outline-variant/20 shadow-2xl">
             <h2 className="text-2xl font-headline font-bold text-on-surface mb-2">Remarcar Horário</h2>
             <p className="text-on-surface-variant font-label text-sm mb-6">Escolha um novo horário disponível para hoje</p>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-label text-on-surface-variant mb-2 uppercase tracking-wider">Novo Horário</label>

@@ -20,9 +20,11 @@ export const AgendamentoController = {
           time: dt.toTimeString().split(" ")[0].substring(0, 5),
           status: a.status.toLowerCase().replace(" ", "_"),
           clientName: a.Cliente ? a.Cliente.nome : "Cliente Desconhecido",
-          service: "Corte",
-          notes: "Observação interna",
-          duration: "45 min",
+          
+          // DADOS AGORA DINÂMICOS LIDOS DA BASE DE DADOS:
+          service: a.servico || "Corte Clássico", 
+          notes: a.observacoes || "",
+          duration: "30 min", // Mantido fixo a 30 min para alinhar com os blocos da agenda, ou pode criar uma coluna 'duracao' no BD
         };
       });
 
@@ -49,6 +51,8 @@ export const AgendamentoController = {
         time: dt.toTimeString().split(" ")[0].substring(0, 5),
         status: (a as any).status,
         clientName: (a as any).Cliente ? (a as any).Cliente.nome : null,
+        service: (a as any).servico,
+        notes: (a as any).observacoes
       });
     } catch (error) {
       return res.status(500).json({ error: "Error fetching appointment" });
@@ -57,24 +61,22 @@ export const AgendamentoController = {
 
   async create(req: Request, res: Response) {
     try {
-      const { clientName, clientEmail, clientPhone, barber, date, time } =
-        req.body;
+      // Adicionado service e notes que vêm do payload do front-end
+      const { clientId, clientName, clientEmail, clientPhone, barber, date, time, service, notes } = req.body;
 
-      if (!clientName || !date || !time || !barber) {
+      if ((!clientId && !clientName) || !date || !time || !barber) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
       const data_hora_formatada = new Date(`${date}T${time}:00`);
       const agora = new Date();
 
-      const diferencaMilissegundos =
-        data_hora_formatada.getTime() - agora.getTime();
+      const diferencaMilissegundos = data_hora_formatada.getTime() - agora.getTime();
       const diferencaHoras = diferencaMilissegundos / (1000 * 60 * 60);
 
       if (diferencaHoras < 1) {
         return res.status(400).json({
-          error:
-            "O agendamento deve ser realizado com no mínimo 1 hora de antecedência.",
+          error: "O agendamento deve ser realizado com no mínimo 1 hora de antecedência.",
         });
       }
 
@@ -88,12 +90,14 @@ export const AgendamentoController = {
         });
       }
 
-      // Busca ou cria o cliente
-      let cliente = await Cliente.findOne({
-        where: { email: clientEmail || "" },
-      });
+      let cliente;
+      if (clientId) {
+        cliente = await Cliente.findByPk(clientId);
+      } else if (clientEmail) {
+        cliente = await Cliente.findOne({ where: { email: clientEmail } });
+      }
 
-      if (!cliente) {
+      if (!cliente && clientName) {
         cliente = await Cliente.create({
           nome: clientName,
           email: clientEmail || null,
@@ -101,17 +105,20 @@ export const AgendamentoController = {
         });
       }
 
+      if (!cliente) {
+        return res.status(404).json({ error: "Cliente não encontrado na base de dados." });
+      }
+
       const agendamentosAtivos = await Agendamento.count({
         where: {
           cliente_id: (cliente as any).id,
-          status: "Agendado", // Considerando "Agendado" como status ativo
+          status: "Agendado", 
         },
       });
 
       if (agendamentosAtivos >= 2) {
         return res.status(400).json({
-          error:
-            "O cliente já possui o limite máximo de 2 agendamentos ativos.",
+          error: "O cliente já possui o limite máximo de 2 agendamentos ativos.",
         });
       }
 
@@ -119,12 +126,14 @@ export const AgendamentoController = {
       if (!barbeiroObj)
         return res.status(404).json({ error: "Barber not found" });
 
-      // Criação final do agendamento
+      // Criação final do agendamento com serviço e notas
       const novoAgendamento = await Agendamento.create({
         cliente_id: (cliente as any).id,
         barbeiro_id: (barbeiroObj as any).id,
         data_hora: data_hora_formatada,
         status: "Agendado",
+        servico: service || "Corte Clássico", 
+        observacoes: notes || "", 
       });
 
       return res.status(201).json({
@@ -132,8 +141,11 @@ export const AgendamentoController = {
         clientId: (novoAgendamento as any).cliente_id,
         barberId: (novoAgendamento as any).barbeiro_id,
         status: (novoAgendamento as any).status,
+        service: (novoAgendamento as any).servico,
+        notes: (novoAgendamento as any).observacoes
       });
     } catch (error) {
+      console.error("[AgendamentoController]", error);
       return res.status(500).json({ error: "Error creating appointment" });
     }
   },
@@ -141,7 +153,8 @@ export const AgendamentoController = {
   async update(req: Request, res: Response) {
     try {
       const id = req.params.id as string;
-      const { barber, date, time, status } = req.body;
+      // Adicionado service e notes para suportar edições e remarcações avançadas
+      const { barber, date, time, status, service, notes } = req.body;
 
       const updateData: any = {};
 
@@ -149,31 +162,22 @@ export const AgendamentoController = {
         const data_hora_formatada = new Date(`${date}T${time}:00`);
         const agora = new Date();
 
-        // RN01 para atualizações
-        const diferencaHoras =
-          (data_hora_formatada.getTime() - agora.getTime()) / (1000 * 60 * 60);
+        const diferencaHoras = (data_hora_formatada.getTime() - agora.getTime()) / (1000 * 60 * 60);
         if (diferencaHoras < 1) {
-          return res
-            .status(400)
-            .json({
-              error: "A remarcação deve ter no mínimo 1 hora de antecedência.",
-            });
+          return res.status(400).json({ error: "A remarcação deve ter no mínimo 1 hora de antecedência." });
         }
 
-        // RN05 para atualizações
         const horaAgendamento = parseInt(time.split(":")[0], 10);
         if (horaAgendamento < 9 || horaAgendamento >= 18) {
-          return res
-            .status(400)
-            .json({
-              error: "Horário fora da jornada de trabalho do barbeiro.",
-            });
+          return res.status(400).json({ error: "Horário fora da jornada de trabalho do barbeiro." });
         }
 
         updateData.data_hora = data_hora_formatada;
       }
 
       if (status) updateData.status = status;
+      if (service) updateData.servico = service;
+      if (notes !== undefined) updateData.observacoes = notes;
 
       if (barber) {
         const barbeiroObj = await Barbeiro.findOne({ where: { nome: barber } });
@@ -201,65 +205,52 @@ export const AgendamentoController = {
       return res.status(500).json({ error: "Error deleting appointment" });
     }
   },
+  
   async getDisponibilidade(req: Request, res: Response) {
     try {
       const { date, barber } = req.query;
 
       if (!date || !barber) {
-        return res
-          .status(400)
-          .json({ error: "Data e barbeiro são obrigatórios" });
+        return res.status(400).json({ error: "Data e barbeiro são obrigatórios" });
       }
 
-      // Busca o ID do barbeiro pelo nome
-      const barbeiroObj = await Barbeiro.findOne({
-        where: { nome: barber as string },
-      });
-      if (!barbeiroObj)
-        return res.status(404).json({ error: "Barbeiro não encontrado" });
+      const barbeiroObj = await Barbeiro.findOne({ where: { nome: barber as string } });
+      if (!barbeiroObj) return res.status(404).json({ error: "Barbeiro não encontrado" });
 
-      // Define o início e o fim do dia selecionado
       const dataInicio = new Date(`${date}T00:00:00`);
       const dataFim = new Date(`${date}T23:59:59`);
 
-      // Busca agendamentos desse barbeiro neste dia
       const agendamentos = await Agendamento.findAll({
         where: {
           barbeiro_id: (barbeiroObj as any).id,
           status: "Agendado",
-          data_hora: {
-            [Op.between]: [dataInicio, dataFim],
-          },
+          data_hora: { [Op.between]: [dataInicio, dataFim] },
         },
       });
 
-      // Extrai apenas as horas já ocupadas (ex: "10:00")
       const horariosOcupados = agendamentos.map((a: any) => {
         const dt = new Date(a.data_hora);
-        return dt.toTimeString().split(" ")[0].substring(0, 5);
+        // Regra atualizada para extrair hora e minuto para evitar conflitos de 30 em 30 min
+        return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
       });
 
-      // Gera a jornada de trabalho padrão (09:00 às 17:00, pois 18h fecha)
       const horariosPossiveis = [];
       for (let i = 9; i < 18; i++) {
-        horariosPossiveis.push(`${i.toString().padStart(2, "0")}:00`);
+        const horaFormatada = i.toString().padStart(2, "0");
+        horariosPossiveis.push(`${horaFormatada}:00`);
+        horariosPossiveis.push(`${horaFormatada}:30`);
       }
 
-      // Remove os horários que já estão no banco de dados
-      const horariosDisponiveis = horariosPossiveis.filter(
-        (h) => !horariosOcupados.includes(h),
-      );
+      const horariosDisponiveis = horariosPossiveis.filter((h) => !horariosOcupados.includes(h));
 
-      // RN01: Se a data selecionada for hoje, esconde os horários que já passaram
-      // ou estão a menos de 1 hora de distância
       const agora = new Date();
       const hojeStr = agora.toISOString().split("T")[0];
 
       const horariosFinais = horariosDisponiveis.filter((h) => {
         if (date === hojeStr) {
-          const horaSlot = new Date(`${date}T${h}:00`);
-          const diferencaHoras =
-            (horaSlot.getTime() - agora.getTime()) / (1000 * 60 * 60);
+          const [hora, minuto] = h.split(':');
+          const horaSlot = new Date(`${date}T${hora}:${minuto}:00`);
+          const diferencaHoras = (horaSlot.getTime() - agora.getTime()) / (1000 * 60 * 60);
           return diferencaHoras >= 1;
         }
         return true;

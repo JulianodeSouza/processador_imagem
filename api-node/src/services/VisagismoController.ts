@@ -73,9 +73,9 @@ export const VisagismoController = {
         contentType: req.file.mimetype,
       });
 
-      // 3. Chama a API Python no endpoint /analisar
+      // 3. Chama a API Python no endpoint /visagismo/analisar
       const pythonResponse = await axios.post(
-        `${PYTHON_API_URL}/analisar`,
+        `${PYTHON_API_URL}/visagismo/analisar`,
         form,
         {
           headers: form.getHeaders(),
@@ -94,25 +94,42 @@ export const VisagismoController = {
       const resultadoPython = pythonResponse.data;
 
       // 4. Extrai os dados retornados pela API Python
-      // Estrutura esperada: resultadoPython.analise_visagismo
       const analise = resultadoPython.analise_visagismo;
-      const formatoRosto = analise.formato_rosto;
+      const formatoRosto = analise.formato_rosto || "Não identificado";
+
+      // Normaliza os estilos sugeridos para proteger contra falhas da IA (ex: enviar 'name' em vez de 'nome' ou array vazio)
+      const rawEstilos = Array.isArray(analise.estilos_recomendados)
+        ? analise.estilos_recomendados
+        : [];
+      const estilosNormalizados = rawEstilos.map((e: any) => ({
+        nome: e.nome || e.name || "Corte Personalizado",
+        justificativa:
+          e.justificativa ||
+          e.justification ||
+          "Recomendado com base nas proporções do rosto.",
+      }));
+
+      // Fallback de segurança se a IA não recomendar nada
+      if (estilosNormalizados.length === 0) {
+        estilosNormalizados.push({
+          nome: "Corte Clássico",
+          justificativa: "Opção versátil e segura para este formato de rosto.",
+        });
+      }
 
       // Pega o nome do primeiro corte sugerido para buscar no banco
-      const primeiroCorte = analise.estilos_recomendados?.[0]?.nome || null;
+      const primeiroCorte = estilosNormalizados[0].nome;
 
       // Monta a justificativa com todos os cortes sugeridos
       const justificativa = [
-        analise.dica_principal,
-        ...(analise.estilos_recomendados || []).map(
-          (e: any) => `${e.nome}: ${e.justificativa}`,
-        ),
+        analise.dica_principal || "Mantenha o equilíbrio do rosto.",
+        ...estilosNormalizados.map((e: any) => `${e.nome}: ${e.justificativa}`),
       ].join(" | ");
 
       // 5. Busca o corte no banco de dados pelo nome
-      const corteSugeridoDb = primeiroCorte
-        ? await Corte.findOne({ where: { nome: primeiroCorte } })
-        : null;
+      const corteSugeridoDb = await Corte.findOne({
+        where: { nome: primeiroCorte },
+      });
 
       // 6. Salva a recomendação no banco
       const novaRecomendacao = await RecomendacaoVisagismo.create({
@@ -122,20 +139,31 @@ export const VisagismoController = {
         justificativa,
       });
 
+      // Busca os dados do cliente para devolver o nome corretamente ao Front-end
+      const clienteDb = await Cliente.findByPk(clientId);
+
       const imageUrl = `http://localhost:${process.env.PORT || 3333}/uploads/${req.file.filename}`;
 
-      // 7. Retorna o resultado completo ao cliente
+      // 7. Retorna o resultado completo ao cliente enriquecido com nomes
       return res.status(201).json({
         message: "Analysis completed successfully",
         recommendation: {
           id: (novaRecomendacao as any).id,
+          clientId: clientId,
+          clientName: clienteDb ? (clienteDb as any).nome : "Cliente",
           faceShape: formatoRosto,
-          confidence: analise.confianca,
-          description: analise.descricao_formato,
-          characteristics: analise.caracteristicas_detectadas,
-          justification: analise.dica_principal,
-          suggestedCuts: analise.estilos_recomendados,
-          avoid: analise.evitar,
+          suggestedCutId: corteSugeridoDb ? (corteSugeridoDb as any).id : null,
+          suggestedCutName: corteSugeridoDb
+            ? (corteSugeridoDb as any).nome
+            : primeiroCorte,
+          confidence: analise.confianca || 0.85,
+          description:
+            analise.descricao_formato || "Análise concluída com sucesso.",
+          characteristics: analise.caracteristicas_detectadas || [],
+          justification: analise.dica_principal || justificativa,
+          suggestedCuts: estilosNormalizados,
+          avoid: analise.evitar || [],
+          createdAt: (novaRecomendacao as any).criado_em || new Date(),
         },
         metrics: resultadoPython.metricas_computadas,
         photoUrl: imageUrl,

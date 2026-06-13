@@ -4,7 +4,7 @@ import axios from "axios";
 // Você pode configurar isso em um arquivo .env.local na raiz do projeto (NEXT_PUBLIC_API_URL=http://localhost:3000)
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3333",
-  timeout: 10000,
+  timeout: 60000,
 });
 
 // Interceptor para injetar tokens de autenticação futuramente, se necessário

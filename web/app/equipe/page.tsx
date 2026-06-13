@@ -37,6 +37,26 @@ export default function EquipePage(): ReactNode {
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
 
+
+  // ... seus outros states (newName, newPhone, etc)
+
+  // Função para aplicar a máscara de telefone (Fixo ou Celular)
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, ""); // Remove tudo o que não for número
+
+    if (value.length <= 10) {
+      // Máscara para telefone fixo: (XX) XXXX-XXXX
+      value = value.replace(/^(\d{2})(\d)/g, "($1) $2");
+      value = value.replace(/(\d{4})(\d)/, "$1-$2");
+    } else {
+      // Máscara para celular: (XX) XXXXX-XXXX
+      value = value.replace(/^(\d{2})(\d)/g, "($1) $2");
+      value = value.replace(/(\d{5})(\d)/, "$1-$2");
+    }
+
+    setNewPhone(value.substring(0, 15)); // Limita o tamanho máximo a 15 caracteres
+  };
+
   // Estado da Agenda
   const [barberAgenda, setBarberAgenda] = useState<BarberAgenda[]>([]);
 
@@ -334,7 +354,13 @@ export default function EquipePage(): ReactNode {
             <h2 className="text-2xl font-headline font-bold text-on-surface mb-8">Novo Profissional</h2>
             <div className="space-y-6">
               <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-2xl px-5 py-4 outline-none focus:border-secondary transition-colors font-label" placeholder="Nome Completo" />
-              <input type="text" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-2xl px-5 py-4 outline-none focus:border-secondary transition-colors font-label" placeholder="Telefone" />
+              <input type="text" value={newPhone} onChange={handlePhoneChange} />
+              <input
+                type="text"
+                value={newPhone}
+                onChange={handlePhoneChange}
+                className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-2xl px-5 py-4 outline-none focus:border-secondary transition-colors font-label" placeholder="Telefone"
+              />
               <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-2xl px-5 py-4 outline-none focus:border-secondary transition-colors font-label" placeholder="E-mail" />
             </div>
             <div className="flex justify-end gap-3 mt-8">

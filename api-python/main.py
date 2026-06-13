@@ -2,6 +2,7 @@ import io
 import json
 import os
 import urllib.request
+import re
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -118,7 +119,7 @@ Proporções calculadas:
 """
 
     response = client.models.generate_content(
-        model='gemini-3.5-flash', # <── Altere apenas esta linha
+        model='gemini-3.5-flash',
         contents=[user_text],
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
@@ -133,7 +134,14 @@ Proporções calculadas:
     if response_text is None:
         raise ValueError("Resposta do Gemini não contém texto JSON esperado.")
 
-    return json.loads(response_text.strip())
+    texto_limpo = response_text.strip()
+    
+    # Extrai estritamente o que está entre a primeira '{' e a última '}'
+    match = re.search(r'\{.*\}', texto_limpo, re.DOTALL)
+    if match:
+        texto_limpo = match.group(0)
+        
+    return json.loads(texto_limpo)
 
 # ─── Endpoints da API REST ─────────────────────────────────────────────────────
 

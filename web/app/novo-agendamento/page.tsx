@@ -6,9 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import { api } from "@/services/api";
 
 interface FormData {
-  clientName: string;
-  clientEmail: string;
-  clientPhone: string;
+  clientId: string; // Trocamos name, email e phone apenas pelo ID do cliente
   service: string;
   barber: string;
   date: string;
@@ -28,11 +26,16 @@ interface ServiceType {
   preco: number;
 }
 
+interface ClientType {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
 export default function NovoAgendamentoPage(): ReactNode {
   const [formData, setFormData] = useState<FormData>({
-    clientName: "",
-    clientEmail: "",
-    clientPhone: "",
+    clientId: "",
     service: "",
     barber: "",
     date: "",
@@ -44,19 +47,22 @@ export default function NovoAgendamentoPage(): ReactNode {
   const [loadingTimes, setLoadingTimes] = useState(false);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<ServiceType[]>([]);
+  const [clients, setClients] = useState<ClientType[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Busca barbeiros e serviços simultaneamente
+  // Busca barbeiros, serviços e clientes simultaneamente
   useEffect(() => {
     async function fetchData() {
       try {
-        const [barbersRes, servicesRes] = await Promise.all([
+        const [barbersRes, servicesRes, clientsRes] = await Promise.all([
           api.get("/barbeiros"),
           api.get("/cortes"),
+          api.get("/clientes"),
         ]);
         setBarbers(barbersRes.data || []);
         setServices(servicesRes.data || []);
+        setClients(clientsRes.data || []);
       } catch (error) {
         console.error("Erro ao carregar dados do formulário:", error);
       }
@@ -65,9 +71,7 @@ export default function NovoAgendamentoPage(): ReactNode {
   }, []);
 
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -86,9 +90,7 @@ export default function NovoAgendamentoPage(): ReactNode {
       setSubmitted(true);
       setTimeout(() => {
         setFormData({
-          clientName: "",
-          clientEmail: "",
-          clientPhone: "",
+          clientId: "",
           service: "",
           barber: "",
           date: "",
@@ -114,12 +116,8 @@ export default function NovoAgendamentoPage(): ReactNode {
 
     for (let i = horaAbertura; i <= horaFechamento; i++) {
       const horaFormatada = i.toString().padStart(2, '0');
-
-      // Adiciona a hora cheia (ex: 09:00)
       horarios.push(`${horaFormatada}:00`);
 
-      // Se quiser agendamentos a cada 30 minutos, adicione esta lógica:
-      // (Evita adicionar 18:30 se o fechamento é exatamente às 18:00)
       if (i < horaFechamento) {
         horarios.push(`${horaFormatada}:30`);
       }
@@ -137,7 +135,6 @@ export default function NovoAgendamentoPage(): ReactNode {
           });
           setAvailableTimes(res.data);
 
-          // Se o horário que estava selecionado não estiver mais disponível, limpa ele
           if (formData.time && !res.data.includes(formData.time)) {
             setFormData(prev => ({ ...prev, time: "" }));
           }
@@ -168,8 +165,7 @@ export default function NovoAgendamentoPage(): ReactNode {
               Novo Agendamento
             </h1>
             <p className="text-on-surface-variant font-label text-sm lg:text-base">
-              Agende um novo cliente no seu atelier. Preencha os dados abaixo e
-              confirme a disponibilidade.
+              Agende um serviço para um cliente cadastrado. Selecione os detalhes abaixo.
             </p>
           </section>
 
@@ -184,8 +180,7 @@ export default function NovoAgendamentoPage(): ReactNode {
                   Agendamento realizado com sucesso!
                 </p>
                 <p className="text-primary/80 text-sm mt-1">
-                  Um email de confirmação foi enviado para{" "}
-                  {formData.clientEmail}
+                  O horário foi reservado no sistema.
                 </p>
               </div>
             </div>
@@ -193,57 +188,40 @@ export default function NovoAgendamentoPage(): ReactNode {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Dados do Cliente */}
+            
+            {/* Dados do Cliente -> AGORA É APENAS UM SELECT */}
             <div className="glass-card rounded-xl p-6 lg:p-8 border border-outline-variant/10">
               <h2 className="text-xl lg:text-2xl font-bold text-on-surface mb-6 font-headline flex items-center gap-3">
                 <span className="material-symbols-outlined text-primary">
                   person
                 </span>
-                Dados do Cliente
+                Vínculo de Cliente
               </h2>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="lg:col-span-2">
-                  <label className="block text-on-surface font-label text-sm font-semibold mb-2">
-                    Nome Completo *
-                  </label>
-                  <input
-                    type="text"
-                    name="clientName"
-                    value={formData.clientName}
+              <div>
+                <label className="block text-on-surface font-label text-sm font-semibold mb-2">
+                  Selecionar Cliente Registado *
+                </label>
+                <div className="relative">
+                  <select
+                    name="clientId"
+                    value={formData.clientId}
                     onChange={handleChange}
                     required
-                    placeholder="João Silva"
-                    className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary transition-all duration-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-on-surface font-label text-sm font-semibold mb-2">
-                    Email *
-                  </label>
-                  <input
-                    type="email"
-                    name="clientEmail"
-                    value={formData.clientEmail}
-                    onChange={handleChange}
-                    required
-                    placeholder="joao@example.com"
-                    className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary transition-all duration-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-on-surface font-label text-sm font-semibold mb-2">
-                    Telefone *
-                  </label>
-                  <input
-                    type="tel"
-                    name="clientPhone"
-                    value={formData.clientPhone}
-                    onChange={handleChange}
-                    required
-                    placeholder="(11) 99999-9999"
-                    className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary transition-all duration-300"
-                  />
+                    className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary appearance-none pr-10"
+                  >
+                    <option value="" disabled>Selecione um cliente da lista...</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.name} {client.phone ? `(${client.phone})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-on-surface-variant">
+                    <span className="material-symbols-outlined text-xl">
+                      expand_more
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -257,86 +235,24 @@ export default function NovoAgendamentoPage(): ReactNode {
                 Serviço e Profissional
               </h2>
 
-              {/* Serviço e Profissional */}
-              <div className="glass-card rounded-xl p-6 lg:p-8 border border-outline-variant/10">
-                <h2 className="text-xl lg:text-2xl font-bold text-on-surface mb-6 font-headline flex items-center gap-3">
-                  <span className="material-symbols-outlined text-secondary">
-                    content_cut
-                  </span>
-                  Serviço e Profissional
-                </h2>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* COLUNA DO SERVIÇO */}
-                  <div className="flex flex-col gap-3">
-                    <div>
-                      <label className="block text-on-surface font-label text-sm font-semibold mb-2">
-                        Serviço *
-                      </label>
-                      <div className="relative">
-                        <select
-                          name="service"
-                          value={formData.service}
-                          onChange={handleChange}
-                          required
-                          className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary appearance-none pr-10"
-                        >
-                          <option value="">Selecione um serviço</option>
-                          {services.map((service) => (
-                            <option key={service.id} value={service.nome}>
-                              {service.nome}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-on-surface-variant">
-                          <span className="material-symbols-outlined text-xl">
-                            expand_more
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* CAIXINHA DE DESCRIÇÃO DO CORTE */}
-                    {servicoSelecionado && servicoSelecionado.descricao && (
-                      <div className="p-4 rounded-lg bg-secondary/10 border border-secondary/20 transition-all duration-300 animate-fade-in">
-                        <h4 className="text-secondary font-semibold text-sm mb-1 flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[16px]">
-                            info
-                          </span>
-                          Detalhes do Serviço
-                        </h4>
-                        <p className="text-on-surface-variant text-sm mb-2 leading-relaxed">
-                          {servicoSelecionado.descricao}
-                        </p>
-                        {servicoSelecionado.preco && (
-                          <span className="inline-block px-3 py-1 bg-secondary/20 text-secondary rounded-full text-xs font-bold">
-                            R${" "}
-                            {Number(servicoSelecionado.preco)
-                              .toFixed(2)
-                              .replace(".", ",")}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* COLUNA DO BARBEIRO */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-3">
                   <div>
                     <label className="block text-on-surface font-label text-sm font-semibold mb-2">
-                      Barbeiro *
+                      Serviço *
                     </label>
                     <div className="relative">
                       <select
-                        name="barber"
-                        value={formData.barber}
+                        name="service"
+                        value={formData.service}
                         onChange={handleChange}
                         required
                         className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary appearance-none pr-10"
                       >
-                        <option value="">Selecione um barbeiro</option>
-                        {barbers.map((barber) => (
-                          <option key={barber.id} value={barber.name}>
-                            {barber.name}
+                        <option value="">Selecione um serviço</option>
+                        {services.map((service) => (
+                          <option key={service.id} value={service.nome}>
+                            {service.nome}
                           </option>
                         ))}
                       </select>
@@ -345,6 +261,55 @@ export default function NovoAgendamentoPage(): ReactNode {
                           expand_more
                         </span>
                       </div>
+                    </div>
+                  </div>
+
+                  {servicoSelecionado && servicoSelecionado.descricao && (
+                    <div className="p-4 rounded-lg bg-secondary/10 border border-secondary/20 transition-all duration-300 animate-fade-in">
+                      <h4 className="text-secondary font-semibold text-sm mb-1 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[16px]">
+                          info
+                        </span>
+                        Detalhes do Serviço
+                      </h4>
+                      <p className="text-on-surface-variant text-sm mb-2 leading-relaxed">
+                        {servicoSelecionado.descricao}
+                      </p>
+                      {servicoSelecionado.preco && (
+                        <span className="inline-block px-3 py-1 bg-secondary/20 text-secondary rounded-full text-xs font-bold">
+                          R${" "}
+                          {Number(servicoSelecionado.preco)
+                            .toFixed(2)
+                            .replace(".", ",")}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-on-surface font-label text-sm font-semibold mb-2">
+                    Barbeiro *
+                  </label>
+                  <div className="relative">
+                    <select
+                      name="barber"
+                      value={formData.barber}
+                      onChange={handleChange}
+                      required
+                      className="w-full px-4 py-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface focus:border-primary appearance-none pr-10"
+                    >
+                      <option value="">Selecione um barbeiro</option>
+                      {barbers.map((barber) => (
+                        <option key={barber.id} value={barber.name}>
+                          {barber.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-on-surface-variant">
+                      <span className="material-symbols-outlined text-xl">
+                        expand_more
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -388,8 +353,6 @@ export default function NovoAgendamentoPage(): ReactNode {
                     ))}
                   </select>
                 </div>
-                <div>
-                </div>
               </div>
             </div>
 
@@ -415,7 +378,7 @@ export default function NovoAgendamentoPage(): ReactNode {
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || !formData.clientId}
                 className="flex-1 px-6 py-4 rounded-lg bg-gradient-to-r from-primary to-primary/80 text-on-primary font-label text-sm font-bold uppercase tracking-wide hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 <span className="material-symbols-outlined">
@@ -424,12 +387,10 @@ export default function NovoAgendamentoPage(): ReactNode {
                 {isLoading ? "A processar..." : "Confirmar Agendamento"}
               </button>
               <button
-                type="reset"
+                type="button"
                 onClick={() =>
                   setFormData({
-                    clientName: "",
-                    clientEmail: "",
-                    clientPhone: "",
+                    clientId: "",
                     service: "",
                     barber: "",
                     date: "",
