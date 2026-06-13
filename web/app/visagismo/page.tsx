@@ -60,7 +60,7 @@ export default function VisagismoPage(): ReactNode {
                         Formato do Rosto
                       </p>
                       <p className="font-bold text-on-surface">
-                        {currentAnalysis.recommendation.faceShape}
+                        {currentAnalysis?.recommendation?.faceShape}
                       </p>
                     </div>
 
@@ -70,7 +70,9 @@ export default function VisagismoPage(): ReactNode {
                         Confiança da IA
                       </p>
                       <p className="font-bold text-primary">
-                        {Math.round(currentAnalysis.recommendation.confidence * 100)}%
+                       {currentAnalysis?.recommendation?.confidence 
+  ? Math.round(currentAnalysis.recommendation.confidence * 100) 
+  : 0}%
                       </p>
                     </div>
 

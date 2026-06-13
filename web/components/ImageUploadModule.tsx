@@ -5,7 +5,7 @@ import { api } from "@/services/api";
 
 // Atualizado para refletir o JSON real da API
 export interface AnalysisResult {
-  faceShape: unknown;
+  faceShape?: string; 
   message: string;
   recommendation: {
     id: number;
@@ -61,7 +61,6 @@ export default function ImageUploadModule({ clientId, onAnalysisComplete }: Imag
     } catch (error) {
       console.error("Erro ao processar imagem pela IA:", error);
       alert("Erro ao realizar análise. Tente novamente.");
-      window.location.reload();
     } finally {
       setIsUploading(false);
     }

@@ -118,7 +118,7 @@ Proporções calculadas:
 """
 
     response = client.models.generate_content(
-        model='gemini-2.0-flash',
+        model='gemini-3.5-flash', # <── Altere apenas esta linha
         contents=[user_text],
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
@@ -142,8 +142,8 @@ async def root():
     """Endpoint de checagem de saúde da API."""
     return {"status": "online", "api": "API Visagismo", "versao": "1.0.0"}
 
-@app.post("/analisar", tags=["Análise Facial"])
-async def analisar_rosto(file: UploadFile = File(...)):
+@app.post("/visagismo/analisar", tags=["Análise Facial"])
+async def analisar_imagem(file: UploadFile = File(...)):
     """
     Recebe uma imagem via Form-Data (chave 'file'), extrai os pontos faciais
     matemáticos e processa o diagnóstico de visagismo no Gemini AI.
